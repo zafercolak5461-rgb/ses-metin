@@ -321,7 +321,9 @@ const TestEngine = {
   async run(audio, opts){
     const dur = audio.length / 16000; this.n++; window.__runs = (window.__runs || 0) + 1;
     await new Promise(r => setTimeout(r, +(new URLSearchParams(location.search).get('delay') || 0)));
-    if (new URLSearchParams(location.search).has('loop') && !(arguments[1] && arguments[1].repetition_penalty)) return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'Ne? Ne? Ne? Ne? Ne?' }];
+    if (new URLSearchParams(location.search).has('loop') && !(opts && opts.repetition_penalty)) return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'Ne? Ne? Ne? Ne? Ne?' }];
+    if (new URLSearchParams(location.search).has('wloop') && !(opts && opts.repetition_penalty)) { window.__caps = [...(window.__caps || []), opts && opts.max_new_tokens];
+      return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'- ' + Array(Math.min(300, (opts && opts.max_new_tokens) || 300)).fill('Gülün').join(' ') }]; }
     const hl = +(new URLSearchParams(location.search).get('hallu') || 0);   // test: uzun parçada uydurma cümle
     if (hl && dur > hl) return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'İzlediğiniz için teşekkür ederim.' }];
     const t = ['Merhaba, size nasıl yardımcı olabilirim?', 'Kimlik numaranızı alabilir miyim?', 'Başvurum hakkında bilgi almak istiyorum.', 'Ödeme tarihi ne zaman?', 'Başka bir konuda yardımcı olabilir miyim?'][(this.n - 1) % 5];
@@ -369,7 +371,7 @@ function pearson(a, ai, b, bi, n){
 // Yankı tespiti: bir kanaldaki ses, diğer kanaldaki sesin GECİKMELİ kopyasıysa o kısım yankıdır.
 // (Personelin sesi vatandaş hattından yankı olarak geri gelebiliyor, bazen asıl sesten de yüksek.)
 function echoMask(r, o){
-  const W = 33, STEP = 16, MAXLAG = 25, mask = new Uint8Array(r.length);
+  const W = 33, STEP = 16, MAXLAG = 25, mask = new Uint8Array(r.length), lags = [];
   const thrO = Math.max(pct(o, 0.2) * 3, 0.002);
   for (let w = MAXLAG; w + W + MAXLAG < r.length; w += STEP) {
     let mo = 0, mr = 0; for (let k = 0; k < W; k++) { mo += o[w+k]; mr += r[w+k]; }
@@ -380,8 +382,9 @@ function echoMask(r, o){
     const isEcho = bestLag >= 2 ? true               // bu kanal gecikmeli → yankı
                  : bestLag <= -2 ? false            // bu kanal önde → asıl ses
                  : mr < mo * 0.25;                  // aynı anda: sadece çok kısıksa yankı say
-    if (isEcho) for (let k = 0; k < W; k++) mask[w+k] = 1;
+    if (isEcho) { for (let k = 0; k < W; k++) mask[w+k] = 1; if (bestLag >= 2) lags.push(bestLag); }
   }
+  mask.lags = lags;
   return mask;
 }
 // Yankının gecikmesini bul (tüm kayıt boyunca, çerçeve düzeyinde): mic kanalı ref kanalını kaç çerçeve geriden izliyor?
@@ -422,9 +425,10 @@ async function cancelEcho(mic, ref, adaptMask, lagFrames){
 async function cleanStereo(L, R){
   const rL = frameRms(L), rR = frameRms(R), res = { L, R, info:{} };
   for (const [key, mic, ref, rm, rf] of [['V', R, L, rR, rL], ['P', L, R, rL, rR]]) {
-    const d = echoDelayFrames(rm, rf), mask = echoMask(rm, rf);
+    const mask = echoMask(rm, rf);
     let cnt = 0; for (const m of mask) cnt += m;
-    if (d.corr < 0.3 || cnt < 30) { res.info[key] = 'yok'; continue; }      // belirgin yankı yoksa dokunma
+    if (cnt < 30 || mask.lags.length < 2) { res.info[key] = 'yok'; continue; }      // belirgin (gecikmeli) yankı yoksa dokunma
+    const d = { lag: Math.round(pct(mask.lags, 0.5)) };
     // Kırpılmış (aşırı yüksek) yankı doğrusal değildir; silme güvenilmez → eski yönteme (yankıyı yok sayma) bırak
     let clip = 0, tot = 0;
     for (let f = 0; f < mask.length; f++) if (mask[f]) for (let i = f*FRAME; i < Math.min(mic.length, (f+1)*FRAME); i++) { tot++; if (Math.abs(mic[i]) > 0.97) clip++; }
@@ -529,12 +533,12 @@ async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
     } };
     // Bir bölgeyi dene; model döngüye girer ya da sadece uydurma yazarsa güçlendirmesiz ses + tekrar kısıtıyla yeniden dene, iyisini seç
     const tryRegion = async (s0, e0, rg) => {
-      const c1 = await Engine.run(makeInput(ch, s0, e0, rg));
+      const c1 = await Engine.run(makeInput(ch, s0, e0, rg), tokCap(e0 - s0));
       if (!isLooping(c1) && !isAllHallu(c1)) return c1;
-      const c2 = await Engine.run(makeInput(ch, s0, e0, rg, true), RETRY_OPTS).catch(() => []);
+      const c2 = await Engine.run(makeInput(ch, s0, e0, rg, true), { ...RETRY_OPTS, ...tokCap(e0 - s0) }).catch(() => []);
       return quality(c2) > quality(c1) ? c2 : c1;
     };
-    const chunks = await Engine.run(makeInput(ch, p.s, p.e, regs));
+    const chunks = await Engine.run(makeInput(ch, p.s, p.e, regs), tokCap(dur));
     const inside = (regs || []).filter(g => g.e > p.s && g.s < p.e);
     if ((isAllHallu(chunks) || isLooping(chunks)) && inside.length > 1) {
       // Parçadaki her konuşma bölgesini tek başına dene (kısa cevaplar birlikteyken kayboluyor olabilir)
@@ -543,11 +547,11 @@ async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
         addChunks(await tryRegion(s0, e0, [g]), s0, e0 - s0);
       }
     } else if (isAllHallu(chunks) || isLooping(chunks)) {
-      const c2 = await Engine.run(makeInput(ch, p.s, p.e, regs, true), RETRY_OPTS).catch(() => []);
+      const c2 = await Engine.run(makeInput(ch, p.s, p.e, regs, true), { ...RETRY_OPTS, ...tokCap(dur) }).catch(() => []);
       addChunks(quality(c2) > quality(chunks) ? c2 : chunks, p.s, dur);
     } else addChunks(chunks, p.s, dur);
     if (segs.length === before && job) job.empty = [...(job.empty || []), { start:p.s, end:p.e, spk }];
-    if (job) { job.raw.push(...segs.slice(before)); job.done.push(key); job.took = (job.took || 0) + (performance.now() - tp) / 1000; save && await save(); }   // kaldığı yerden devam için
+    if (job) { job.raw.push(...segs.slice(before)); job.done.push(key); const dt = (performance.now() - tp) / 1000; job.took = (job.took || 0) + dt; job.by = job.by || {}; job.by[spk || 'M'] = (job.by[spk || 'M'] || 0) + dt; save && await save(); }   // kaldığı yerden devam için
     onPiece && onPiece();
     if (pi < pieces.length - 1 && PAUSE_MS) await new Promise(res => setTimeout(res, PAUSE_MS));
   }
@@ -569,6 +573,7 @@ function cleanText(t, removed){
     const low = trLow(s).replace(/[^\p{L}\p{N} ]/gu, '').trim();
     if (!low) continue;
     if (HALLU.some(h => h.test(trLow(s)))) { removed && removed.push([s, 'uydurma']); continue; }
+    if (wordLoop(s)) { removed && removed.push([s.length > 80 ? s.slice(0, 80) + '…' : s, 'tekrar']); continue; }
     if (out.length && trLow(out[out.length-1]).replace(/[^\p{L}\p{N} ]/gu, '').trim() === low) { removed && removed.push([s, 'tekrar']); continue; } // "X. X. X." → "X."
     out.push(s);
   }
@@ -579,10 +584,19 @@ const isAllHallu = (chunks) => !chunks.some(c => cleanText((c.text || '').trim()
 const quality = (chunks) => new Set(chunks.map(c => cleanText((c.text || '').trim())).join(' ').split(/\s+/).map(w => trLow(w).replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean)).size;
 // Model döngüye girdi mi? ("Ne? Ne? Ne?…" gibi: çok cümle, az farklı cümle)
 function isLooping(chunks){
-  const sents = chunks.map(c => (c.text || '').trim()).join(' ').split(/(?<=[.!?…])\s+/).map(x => trLow(x).replace(/[^\p{L}\p{N} ]/gu, '').trim()).filter(Boolean);
-  return sents.length >= 3 && new Set(sents).size <= sents.length / 3;
+  const all = chunks.map(c => (c.text || '').trim()).join(' ');
+  const sents = all.split(/(?<=[.!?…])\s+/).map(x => trLow(x).replace(/[^\p{L}\p{N} ]/gu, '').trim()).filter(Boolean);
+  if (sents.length >= 3 && new Set(sents).size <= sents.length / 3) return true;          // "Ne? Ne? Ne?"
+  return wordLoop(all);                                                                     // "Gülün Gülün Gülün…"
+}
+// Kelime/ifade düzeyinde döngü: çok kelime ama çok az farklı kelime
+function wordLoop(t){
+  const w = trLow(t).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);
+  return w.length >= 8 && new Set(w).size / w.length < 0.3;
 }
 const RETRY_OPTS = { repetition_penalty: 1.3, no_repeat_ngram_size: 3 };
+// Konuşma hızı ~3 kelime/sn ≈ ~6–8 token/sn; bol pay bırakıp sınırlıyoruz (döngüde dakikalarca yazmasın)
+const tokCap = (sec) => ({ max_new_tokens: Math.max(24, Math.min(440, Math.round(sec * 12) + 24)) });
 function cleanSegments(segs, dropped){
   const drop = (s, text, reason) => dropped && dropped.push({ start:s.start, spk:s.spk, text, reason });
   segs.sort((a, b) => a.start - b.start);
@@ -735,8 +749,9 @@ async function processRecord(r){
   if (mode === 'V') {
     r.segments = cleanSegments([...r.segments.filter(s => s.spk !== 'V'), ...job.raw], dropped);
     r.dropped = [...(r.dropped || []).filter(d => d.spk !== 'V'), ...dropped];
-    r.vDone = true; r.addV = false; r.took = (r.took || 0) + took;
-  } else { r.segments = cleanSegments(job.raw.slice(), dropped); r.dropped = dropped; r.vDone = todo.some(p => p.spk === 'V'); r.took = took; }
+    r.vDone = true; r.addV = false; r.tookV = (job.by || {}).V || 0; r.took = (r.tookP || 0) + r.tookV;
+  } else { r.segments = cleanSegments(job.raw.slice(), dropped); r.dropped = dropped; r.vDone = todo.some(p => p.spk === 'V'); r.took = took;
+    const by = job.by || {}; r.tookP = by.P ?? by.M ?? took; r.tookV = r.vDone ? (by.V || 0) : undefined; }
   r.model = state.loadedModel; r.status = 'hazir'; delete r.job;
 }
 
@@ -799,7 +814,7 @@ function renderList(){
       <div class="name" title="${esc(r.name)}">${state.renaming === r.id
         ? `<input class="ren-in" value="${esc(title(r))}">`
         : `<span>${esc(title(r))}</span><button class="ren" title="Adını değiştir">✏️</button>`}</div>
-      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) + (r.addV ? ' (vatandaş)' : '') : ''}${r.status==='bekliyor' && r.job && r.job.done.length ? ' (kaldığı yerden devam edecek)' : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
+      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) + (r.addV ? ' (vatandaş)' : '') : ''}${r.status==='bekliyor' && r.job && r.job.done.length ? ' (kaldığı yerden devam edecek)' : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${r.stereo && r.tookV != null ? `P ${fmt(r.tookP)} + V ${fmt(r.tookV)}` : fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
         <span>${q && r._hits ? `<span class="hits">${r._hits}×</span> ` : ''}${r.duration ? fmt(r.duration) : ''}</span></div>
       ${statsLine(r) ? `<div class="stats">${statsLine(r)}</div>` : ''}
       ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}

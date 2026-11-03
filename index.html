@@ -9,6 +9,7 @@
     --bg:#0f1419; --panel:#161d25; --panel2:#1c2530; --line:#26313d;
     --text:#e6edf3; --muted:#8b98a5; --accent:#3b82f6; --accent2:#60a5fa;
     --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --hl:#1e3a5f;
+    --per:#60a5fa; --vat:#4ade80;
   }
   *{box-sizing:border-box}
   body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
@@ -16,40 +17,65 @@
   header h1{font-size:16px;margin:0;font-weight:600}
   header .sp{flex:1}
   select,button,input{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+  input[type=checkbox]{padding:0;width:15px;height:15px;vertical-align:middle}
   button{cursor:pointer}
   button:hover{border-color:var(--accent)}
   button.primary{background:var(--accent);border-color:var(--accent)}
   button:disabled{opacity:.5;cursor:default}
+  button.on{background:var(--ok);border-color:var(--ok);color:#000}
   .badge{font-size:12px;color:var(--muted)}
   main{flex:1;display:flex;min-height:0}
   /* Sol: kayıt listesi */
-  aside{width:300px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
-  .drop{margin:12px;padding:18px;border:2px dashed var(--line);border-radius:10px;text-align:center;color:var(--muted);cursor:pointer}
+  aside{width:320px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
+  .drop{margin:12px 12px 8px;padding:14px;border:2px dashed var(--line);border-radius:10px;text-align:center;color:var(--muted);cursor:pointer}
   .drop.over{border-color:var(--accent);color:var(--text)}
+  .lfilter{padding:0 12px 10px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--line)}
+  .lfilter .row{gap:6px}
+  .lfilter input[type=text]{flex:1;min-width:0}
+  .lfilter select{padding:6px}
+  .lfilter label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .lfilter input[type=number]{width:56px;padding:3px 6px}
   .list{flex:1;overflow:auto}
-  .item{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:3px}
+  .item{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:3px}
   .item:hover{background:var(--panel2)}
   .item.active{background:var(--hl)}
-  .item .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-  .item .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .item .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;display:flex;gap:6px;align-items:center}
+  .item .name span{overflow:hidden;text-overflow:ellipsis}
+  .item .name .ren{opacity:0;border:0;background:none;padding:0 2px;font-size:12px}
+  .item:hover .name .ren{opacity:.7}
+  .item .name input{flex:1;padding:2px 6px}
+  .item .meta{display:flex;justify-content:space-between;gap:6px;font-size:12px;color:var(--muted)}
+  .item .stats{font-size:12px;color:var(--muted)}
+  .item .stats .bad{color:var(--warn);font-weight:600}
+  .hits{color:var(--warn);font-weight:600}
   .st-bekliyor{color:var(--muted)} .st-isleniyor{color:var(--warn)} .st-hazir{color:var(--ok)} .st-hata{color:var(--err)}
   .bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--warn);width:0}
+  .lcount{font-size:12px;color:var(--muted);padding:6px 12px;border-bottom:1px solid var(--line)}
   /* Sağ: oynatıcı + metin */
   section{flex:1;display:flex;flex-direction:column;min-width:0}
   .player{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
   .ptitle{font-weight:600;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   canvas{width:100%;height:70px;display:block;cursor:pointer;background:var(--panel2);border-radius:6px}
+  .legend{font-size:11px;color:var(--muted);margin-top:4px}
+  .legend b.p{color:var(--per)} .legend b.v{color:var(--vat)}
   .controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
   .time{font-variant-numeric:tabular-nums;color:var(--muted);min-width:110px}
-  .speed button.on{background:var(--accent);border-color:var(--accent)}
+  .speed button.on{background:var(--accent);border-color:var(--accent);color:var(--text)}
   .tools{display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
-  .tools input{flex:1;min-width:160px}
-  .transcript{flex:1;overflow:auto;padding:14px 18px}
+  .tools .search{flex:1 1 100%;display:flex;gap:4px;align-items:center}
+  .tools .search input{flex:1;min-width:120px}
+  .tools .search .cnt{font-size:12px;color:var(--muted);min-width:70px;text-align:center}
+  .tools .search button{padding:6px 8px}
+  .transcript{flex:1;overflow:auto;padding:14px 18px;position:relative}
   .seg{display:flex;gap:12px;padding:6px 8px;border-radius:6px;cursor:pointer}
   .seg:hover{background:var(--panel2)}
   .seg.now{background:var(--hl)}
-  .seg .t{color:var(--accent2);font-variant-numeric:tabular-nums;font-size:12px;padding-top:2px;min-width:48px}
+  .seg.cur{outline:2px solid var(--warn)}
+  .seg .t{color:var(--accent2);font-variant-numeric:tabular-nums;font-size:12px;padding-top:2px;min-width:64px;display:flex;flex-direction:column}
+  .seg .who{font-size:11px;font-weight:600}
+  .seg .who.P{color:var(--per)} .seg .who.V{color:var(--vat)}
+  .seg.V .txt{color:#cfe9d6}
   .seg mark{background:var(--warn);color:#000;border-radius:2px}
   .seg.dim{opacity:.35}
   .empty{color:var(--muted);text-align:center;margin-top:60px}
@@ -60,9 +86,8 @@
   .seg.hasfix .orig{text-decoration:line-through;text-decoration-color:rgba(239,68,68,.7)}
   .fix{margin-top:4px;color:#86efac;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .fix button{padding:2px 8px;font-size:12px}
-  .editor{margin:4px 0 10px 68px;display:flex;flex-direction:column;gap:6px}
+  .editor{margin:4px 0 10px 84px;display:flex;flex-direction:column;gap:6px}
   .editor textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--accent);border-radius:6px;padding:8px;min-height:60px}
-  button.on{background:var(--ok);border-color:var(--ok);color:#000}
   .seg.fixing{background:rgba(34,197,94,.15)}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10}
   .modal[hidden]{display:none}
@@ -75,9 +100,9 @@
   .spk{display:flex;flex-direction:column;gap:6px}
   .spk .row b{min-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .spk .talking b{color:var(--warn)}
-  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:8px;display:none}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:8px;display:none;z-index:20}
   @media (max-width:760px){
-    main{flex-direction:column} aside{width:auto;max-height:35vh;border-right:0;border-bottom:1px solid var(--line)}
+    main{flex-direction:column} aside{width:auto;max-height:40vh;border-right:0;border-bottom:1px solid var(--line)}
   }
 </style>
 </head>
@@ -89,11 +114,12 @@
   <label class="badge">Model
     <select id="modelSel">
       <option value="onnx-community/whisper-base">Hızlı (base)</option>
-      <option value="onnx-community/whisper-small" selected>Dengeli (small)</option>
-      <option value="onnx-community/whisper-large-v3-turbo">En iyi (turbo, ~550 MB)</option>
+      <option value="onnx-community/whisper-small">Dengeli (small)</option>
+      <option value="onnx-community/whisper-large-v3-turbo" selected>En iyi (turbo)</option>
     </select>
   </label>
   <span class="badge" id="modelStatus">Model yüklenmedi</span>
+  <button id="dictOpen" title="Sık yanlış çevrilen kelimeleri düzelt">📖 Sözlük</button>
   <button id="ttsOpen">🗣 Metin → Ses</button>
 </header>
 
@@ -101,6 +127,18 @@
   <aside>
     <div class="drop" id="drop">Ses dosyalarını buraya bırak<br><small>veya tıkla (mp3, wav, m4a, ogg, mp4…)</small></div>
     <input type="file" id="fileIn" accept="audio/*,video/*" multiple hidden>
+    <div class="lfilter">
+      <div class="row">
+        <input type="text" id="recQ" placeholder="Kayıtlarda ara… (ör. anket)">
+        <select id="recMode" title="Arama türü"><option value="in">içeren</option><option value="out">içermeyen</option></select>
+      </div>
+      <div class="row">
+        <select id="recScope" title="Kimin konuşmasında aransın"><option value="all">Herkes</option><option value="P">Personel</option><option value="V">Vatandaş</option></select>
+        <label><input type="checkbox" id="lateOn"> Personel ilk ses &gt; <input type="number" id="lateSec" value="10" min="1" max="120"> sn</label>
+      </div>
+      <label><input type="checkbox" id="vFirst"> Vatandaş personelden önce konuşmuş</label>
+    </div>
+    <div class="lcount" id="lcount"></div>
     <div class="list" id="list"></div>
   </aside>
 
@@ -108,6 +146,7 @@
     <div class="player">
       <div class="ptitle" id="ptitle">Kayıt seçilmedi</div>
       <canvas id="wave"></canvas>
+      <div class="legend" id="legend"></div>
       <div class="controls">
         <button id="playBtn" disabled>▶ Oynat</button>
         <button id="backBtn" disabled title="5 sn geri">⟲ 5</button>
@@ -119,11 +158,19 @@
       </div>
     </div>
     <div class="tools">
-      <input id="search" placeholder="Metinde ara…" disabled>
+      <div class="search">
+        <input id="search" placeholder="Metinde ara… (Enter: sonraki)" disabled>
+        <span class="cnt" id="searchCnt"></span>
+        <button id="prevHit" title="Önceki (Shift+Enter)" disabled>▲</button>
+        <button id="nextHit" title="Sonraki (Enter)" disabled>▼</button>
+      </div>
+      <select id="spkFilter" title="Kimin konuşması gösterilsin" hidden><option value="all">Herkes</option><option value="P">Personel</option><option value="V">Vatandaş</option></select>
+      <button id="followBtn" title="Metni kaydın çalan yerine geri getir" hidden>⤵ Akışa dön</button>
       <button id="fixMode" disabled title="Kaydı çalarken düzeltilen cümlelerin yerine doğrusunu seslendirir">🎓 Düzeltilmiş akış</button>
       <button id="copyBtn" disabled>Kopyala</button>
-      <button id="txtBtn" disabled>.txt indir</button>
-      <button id="srtBtn" disabled>.srt indir</button>
+      <button id="txtBtn" disabled>.txt</button>
+      <button id="srtBtn" disabled>.srt</button>
+      <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
       <button id="delBtn" disabled>Sil</button>
     </div>
     <div class="transcript" id="transcript"><div class="empty">Soldan bir ses dosyası ekle. Metin burada, kayıtla eş zamanlı akacak.</div></div>
@@ -150,22 +197,29 @@
   </div>
 </div>
 
+<div class="modal" id="dictPanel" hidden>
+  <div class="card">
+    <div class="row"><h2>📖 Düzeltme Sözlüğü</h2><span class="sp"></span><button id="dictClose">✕</button></div>
+    <div class="note">Programın sık yanlış yazdığı kelime ya da kelime gruplarını her satıra bir tane olacak şekilde yaz: <b>yanlış =&gt; doğru</b><br>
+      Örnek: <code>yıldığınız için =&gt; aradığınız için</code><br>
+      Tek kelime yerine kelime grubu yazmak daha güvenlidir. Sözlük tüm kayıtlara (eskiler dahil) hemen uygulanır; orijinal metin silinmez.</div>
+    <textarea id="dictText" spellcheck="false" placeholder="yıldığınız için => aradığınız için&#10;eridiniz için => aradığınız için"></textarea>
+    <div class="row"><span class="note" id="dictInfo"></span><span class="sp"></span><button id="dictSave" class="primary">Kaydet</button></div>
+  </div>
+</div>
+
 <script type="module">
 /* =====================================================================
    1) MOTOR KATMANI
-   Her motor aynı arayüzü sunar:
-     load(model, onProgress)              -> modeli hazırlar
-     transcribe(float32_16k, onProgress)  -> [{start, end, text}]
-   İleride buraya "sunucu" motoru (Python / faster-whisper API) eklenebilir;
-   arayüzün geri kalanı değişmeden çalışır.
+   run(float32_16k) -> [{timestamp:[a,b], text}]  (≤ 30 sn'lik parça)
+   İleride buraya "sunucu" motoru (Python / faster-whisper API) eklenebilir.
    ===================================================================== */
 
 const WORKER_CODE = `
-// Kütüphaneyi iki farklı CDN'den dene; ikisi de olmazsa nedenini bildir
 const CDNS = ['https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js',
               'https://unpkg.com/@huggingface/transformers@3.8.1/dist/transformers.min.js'];
 let pipeline, env, libErr = [];
-// Not: mesaj dinleyicisi kütüphane inmeden ÖNCE kurulmalı; yoksa bu sırada gelen komutlar kaybolur
+// Mesaj dinleyicisi kütüphane inmeden ÖNCE kurulmalı; yoksa bu sırada gelen komutlar kaybolur
 const ready = (async () => {
   for (const u of CDNS) {
     try { ({ pipeline, env } = await import(u)); break; }
@@ -175,13 +229,12 @@ const ready = (async () => {
   else env.allowLocalModels = false;
 })();
 let asr = null, currentModel = null;
-// Model + cihaz için indirilecek sürüm. Turbo'nun sıkıştırılmamış hali ~2.6 GB olduğundan GPU'da da q4 (~550 MB) kullanılır.
+// Turbo'nun sıkıştırılmamış hali ~2.6 GB olduğundan GPU'da da q4 kullanılır
 function dtypeFor(model, device){
   const big = /large|turbo/.test(model);
   if (device === 'webgpu') return big ? { encoder_model:'q4', decoder_model_merged:'q4' } : { encoder_model:'fp32', decoder_model_merged:'q4' };
   return { encoder_model:'q8', decoder_model_merged:'q8' };
 }
-
 self.onmessage = async (e) => {
   const { type, id } = e.data;
   await ready;
@@ -197,7 +250,6 @@ self.onmessage = async (e) => {
         asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback, dtype: dtypeFor(model, device) });
       } catch (gpuErr) {
         if (device !== 'webgpu') throw gpuErr;
-        // Ekran kartı (WebGPU) ile açılamazsa işlemciyle (CPU) tekrar dene
         self.postMessage({ id, type:'info', text:'GPU ile açılamadı, işlemciyle deneniyor…' });
         device = 'wasm';
         asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback, dtype: dtypeFor(model, device) });
@@ -206,10 +258,7 @@ self.onmessage = async (e) => {
       self.postMessage({ id, type:'loaded', device });
     }
     if (type === 'run') {
-      const out = await asr(e.data.audio, {
-        language:'turkish', task:'transcribe',
-        return_timestamps:true, chunk_length_s:30, stride_length_s:5
-      });
+      const out = await asr(e.data.audio, { language:'turkish', task:'transcribe', return_timestamps:true, chunk_length_s:30, stride_length_s:5 });
       self.postMessage({ id, type:'result', chunks: out.chunks || [{ timestamp:[0,null], text: out.text }] });
     }
   } catch (err) {
@@ -220,12 +269,10 @@ self.onmessage = async (e) => {
 const BrowserWhisperEngine = {
   name: 'Tarayıcı (Whisper)',
   worker: null, seq: 0, pending: new Map(), device: null, model: null,
-
   _ensureWorker(){
     if (this.worker) return;
     const url = URL.createObjectURL(new Blob([WORKER_CODE], { type:'text/javascript' }));
     this.worker = new Worker(url, { type:'module' });
-    // Worker hiç açılamazsa (ör. kütüphane indirilemedi) bekleyen işleri hata ile bitir; sonsuza kadar beklemesin
     const failAll = (msg) => { for (const [, p] of this.pending) p.reject(new Error(msg)); this.pending.clear(); this.worker = null; };
     this.worker.onerror = (e) => { e.preventDefault && e.preventDefault(); failAll('Motor başlatılamadı: ' + (e.message || 'kütüphane yüklenemedi (internet / güvenlik duvarı?)')); };
     this.worker.onmessage = (e) => {
@@ -254,80 +301,167 @@ const BrowserWhisperEngine = {
     this.device = r.device; this.model = model;
     return r;
   },
-  // Uzun kayıtları sessiz noktalardan ~60 sn'lik parçalara böler: hem ilerleme gösterilir hem kelime ortadan kesilmez.
-  async transcribe(audio, onProgress){
-    const SR = 16000, pieces = splitOnSilence(audio, SR, 60, 4);
-    const segs = [];
-    for (let i = 0; i < pieces.length; i++) {
-      const [s, e] = pieces[i];
-      const part = audio.slice(s, e);
-      const r = await this._call({ type:'run', audio: part }, null, [part.buffer]);
-      const off = s / SR, dur = (e - s) / SR;
-      for (const c of r.chunks) {
-        const text = (c.text || '').trim(); if (!text) continue;
-        const a = c.timestamp?.[0] ?? 0, b = c.timestamp?.[1] ?? dur;
-        segs.push({ start: off + a, end: off + Math.min(b, dur), text });
-      }
-      onProgress && onProgress((i + 1) / pieces.length);
-    }
-    return cleanSegments(segs);
-  }
+  async run(audio){ const r = await this._call({ type:'run', audio }, null, [audio.buffer]); return r.chunks; }
 };
 
-// Test için sahte motor (adres sonuna ?test eklenirse). Model indirmeden arayüzü dener.
+// Test için sahte motor (adres sonuna ?test eklenirse)
 const TestEngine = {
-  name: 'Test motoru', device:'test',
+  name: 'Test motoru', device:'test', n: 0,
   async load(m, p){ p && p(1); return { device:'test' }; },
-  async transcribe(audio, p){
-    const dur = audio.length / 16000, segs = [];
-    for (let t = 0, i = 1; t < dur; t += 4, i++) segs.push({ start:t, end:Math.min(t+4,dur), text:`Örnek cümle ${i}: Merhaba, size nasıl yardımcı olabilirim?` });
-    p && p(1); return segs;
+  async run(audio){
+    const dur = audio.length / 16000; this.n++;
+    return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n}: Merhaba, size nasıl yardımcı olabilirim?` }];
   }
 };
-
 const Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
 
-/* ---------- Ses yardımcıları ---------- */
-async function decodeTo16kMono(file){
-  const buf = await file.arrayBuffer();
-  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+/* =====================================================================
+   2) SES İŞLEME: kanal ayırma, konuşma bulma (VAD), normalize, parçalama
+   ===================================================================== */
+const SR = 16000, FRAME = 480;            // 30 ms'lik çerçeveler
+const PAD_HEAD = 0.8, PAD_TAIL = 0.3;     // Whisper ilk kelimeleri kaçırmasın diye başa sessizlik
+const MAX_PIECE = 27;                     // bir parçada en fazla 27 sn ses
+
+async function decodeChannels(blob){
+  const buf = await blob.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:SR });
   try {
     const ab = await ctx.decodeAudioData(buf);
-    if (ab.numberOfChannels === 1) return ab.getChannelData(0).slice();
-    const out = new Float32Array(ab.length);
-    for (let c = 0; c < ab.numberOfChannels; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) out[i] += d[i] / ab.numberOfChannels; }
-    return out;
+    if (ab.numberOfChannels >= 2) {
+      const L = ab.getChannelData(0).slice(), R = ab.getChannelData(1).slice();
+      // "Sahte stereo" kontrolü: iki kanal neredeyse aynıysa tek kanal say
+      let diff = 0, sum = 0; for (let i = 0; i < L.length; i += 7) { diff += Math.abs(L[i] - R[i]); sum += Math.abs(L[i]) + Math.abs(R[i]); }
+      if (sum > 0 && diff / sum > 0.05) return { stereo:true, channels:[L, R], length:L.length };
+      const M = new Float32Array(L.length); for (let i = 0; i < L.length; i++) M[i] = (L[i] + R[i]) / 2;
+      return { stereo:false, channels:[M], length:M.length };
+    }
+    return { stereo:false, channels:[ab.getChannelData(0).slice()], length:ab.length };
   } finally { ctx.close(); }
 }
-function splitOnSilence(a, SR, target, win){
-  const pieces = []; let start = 0;
-  const frame = Math.floor(SR * 0.1);
-  while (a.length - start > (target + win) * SR) {
-    const c = start + target * SR, lo = c - win * SR, hi = c + win * SR;
-    let best = c, bestE = Infinity;
-    for (let f = lo; f + frame < hi; f += frame) {
-      let e = 0; for (let i = f; i < f + frame; i++) e += a[i] * a[i];
-      if (e < bestE) { bestE = e; best = f + (frame >> 1); }
-    }
-    pieces.push([start, best]); start = best;
-  }
-  pieces.push([start, a.length]);
-  return pieces;
-}
-function cleanSegments(segs){
-  // Whisper'ın sessizlikte aynı cümleyi tekrar etmesini (halüsinasyon) ayıkla
-  const out = [];
-  for (const s of segs) { const p = out[out.length-1]; if (p && p.text === s.text) { p.end = s.end; continue; } out.push(s); }
+function frameRms(ch){
+  const n = Math.floor(ch.length / FRAME), out = new Float32Array(n);
+  for (let f = 0; f < n; f++) { let s = 0; const o = f * FRAME; for (let i = 0; i < FRAME; i++) s += ch[o+i] * ch[o+i]; out[f] = Math.sqrt(s / FRAME); }
   return out;
 }
-function peaks(a, n=1200){
+const pct = (arr, p) => { const a = Array.from(arr).sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0; };
+// Konuşma bölgeleri: karşı kanaldan sızan (çok daha kısık) sesi konuşma saymaz
+function vad(ch, other){
+  const r = frameRms(ch), o = other ? frameRms(other) : null, fs = FRAME / SR;
+  const thr = Math.max(pct(r, 0.2) * 3, pct(r, 0.995) * 0.06, 0.003);
+  const sp = r.map((v, i) => (v > thr && (!o || v > o[i] * 0.35)) ? 1 : 0);
+  const regs = []; let s = -1, last = -1, voiced = 0;
+  const gap = Math.round(0.6 / fs), minV = 8;
+  for (let i = 0; i < sp.length; i++) {
+    if (!sp[i]) continue;
+    if (s >= 0 && i - last <= gap) { last = i; voiced++; continue; }
+    if (s >= 0 && voiced >= minV) regs.push({ s: s * fs, e: (last + 1) * fs });
+    s = i; last = i; voiced = 1;
+  }
+  if (s >= 0 && voiced >= minV) regs.push({ s: s * fs, e: (last + 1) * fs });
+  const dur = ch.length / SR, out = [];
+  for (const g of regs) {           // kenarlara 0.25 sn pay
+    const a = Math.max(0, g.s - 0.25), b = Math.min(dur, g.e + 0.25);
+    if (out.length && a <= out[out.length-1].e) out[out.length-1].e = b; else out.push({ s:a, e:b, raw:g.s });
+  }
+  return out;
+}
+function groupPieces(regs){
+  const pieces = []; let cur = null;
+  for (const g of regs) {
+    if (!cur) cur = { s:g.s, e:g.e };
+    else if (g.e - cur.s <= MAX_PIECE) cur.e = g.e;
+    else { pieces.push(cur); cur = { s:g.s, e:g.e }; }
+  }
+  if (cur) pieces.push(cur);
+  const out = [];
+  for (const p of pieces) for (let a = p.s; a < p.e; a += MAX_PIECE) out.push({ s:a, e:Math.min(p.e, a + MAX_PIECE) });
+  return out;
+}
+// Parçayı hazırla: ses seviyesini dengele (kesik/kısık sesler için) + başa/sona sessizlik
+function makeInput(ch, s, e){
+  const a = Math.floor(s * SR), b = Math.min(ch.length, Math.ceil(e * SR));
+  let peak = 0; for (let i = a; i < b; i++) { const v = Math.abs(ch[i]); if (v > peak) peak = v; }
+  const g = peak > 0 ? Math.min(10, 0.9 / peak) : 1;
+  const head = Math.round(PAD_HEAD * SR), out = new Float32Array(head + (b - a) + Math.round(PAD_TAIL * SR));
+  for (let i = a; i < b; i++) out[head + i - a] = ch[i] * g;
+  return out;
+}
+// Bir kanalı (veya mono sesi) metne çevir
+async function transcribePieces(ch, pieces, spk, onPiece){
+  const segs = [];
+  for (const p of pieces) {
+    const dur = p.e - p.s;
+    const chunks = await Engine.run(makeInput(ch, p.s, p.e));
+    for (const c of chunks) {
+      const text = (c.text || '').trim(); if (!text) continue;
+      const a = Math.max(0, (c.timestamp?.[0] ?? 0) - PAD_HEAD);
+      let b = c.timestamp?.[1]; b = b == null ? dur : Math.max(0, b - PAD_HEAD);
+      const start = p.s + Math.min(a, dur), end = p.s + Math.min(Math.max(b, a + 0.3), dur);
+      segs.push({ start, end, text, spk });
+    }
+    onPiece && onPiece();
+  }
+  return segs;
+}
+function peaks(a, n=900){
   const step = Math.max(1, Math.floor(a.length / n)), out = [];
   for (let i = 0; i < a.length; i += step) { let m = 0; for (let j = i; j < Math.min(i+step, a.length); j++) { const v = Math.abs(a[j]); if (v > m) m = v; } out.push(m); }
   return out;
 }
 
+/* ---------- Metin temizliği: Whisper uydurmaları ve tekrar döngüleri ---------- */
+const trLow = (t) => (t || '').toLocaleLowerCase('tr');
+const HALLU = [/izlediğiniz için teşekkür/, /izlediğiniz için çok teşekkür/, /abone ol/, /altyazı/, /bir sonraki videoda/, /videoyu beğen/, /kanalıma abone/, /^m\.?\s?k\.?$/];
+function cleanText(t){
+  const sents = (t.match(/[^.!?…]+[.!?…]*/g) || [t]).map(s => s.trim()).filter(Boolean);
+  const out = [];
+  for (const s of sents) {
+    const low = trLow(s).replace(/[^\p{L}\p{N} ]/gu, '').trim();
+    if (!low || HALLU.some(h => h.test(trLow(s)))) continue;
+    if (out.length && trLow(out[out.length-1]).replace(/[^\p{L}\p{N} ]/gu, '').trim() === low) continue; // "X. X. X." → "X."
+    out.push(s);
+  }
+  return out.join(' ');
+}
+function cleanSegments(segs){
+  segs.sort((a, b) => a.start - b.start);
+  const out = [], recent = { P:[], V:[], null:[] };
+  for (const s of segs) {
+    s.text = cleanText(s.text); if (!s.text) continue;
+    const key = trLow(s.text).replace(/[^\p{L}\p{N} ]/gu, '').trim();
+    const rec = recent[s.spk] || (recent[s.spk] = []);
+    if (rec.some(r => r.key === key && s.start - r.t < 30)) continue;   // aynı konuşmacıda kısa sürede aynı cümle → döngü
+    rec.push({ key, t:s.start }); if (rec.length > 4) rec.shift();
+    out.push(s);
+  }
+  return out;
+}
+
 /* =====================================================================
-   2) KAYIT DEPOSU (IndexedDB) — sayfa yenilense de kayıtlar ve metinler kalır
+   3) DÜZELTME SÖZLÜĞÜ — gösterimde uygulanır, orijinal metin saklı kalır
+   ===================================================================== */
+const Dict = {
+  KEY:'ses-metin-sozluk', rules:[],
+  load(){ try { this.rules = JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch { this.rules = []; } },
+  save(){ try { localStorage.setItem(this.KEY, JSON.stringify(this.rules)); } catch {} },
+  parse(text){ return text.split('\n').map(l => l.split('=>')).filter(p => p.length === 2 && p[0].trim()).map(p => ({ from:p[0].trim(), to:p[1].trim() })); },
+  toText(){ return this.rules.map(r => `${r.from} => ${r.to}`).join('\n'); },
+  apply(t){
+    if (!t || !this.rules.length) return t;
+    for (const r of this.rules) {
+      const low = trLow(t), f = trLow(r.from); if (!low.includes(f)) continue;
+      let out = '', k = 0, j;
+      while ((j = low.indexOf(f, k)) >= 0) { out += t.slice(k, j) + r.to; k = j + f.length; }
+      t = out + t.slice(k);
+    }
+    return t;
+  }
+};
+Dict.load();
+const shown = (s) => Dict.apply(s.text);
+
+/* =====================================================================
+   4) KAYIT DEPOSU (IndexedDB)
    ===================================================================== */
 const DB = {
   db: null,
@@ -350,10 +484,11 @@ const DB = {
 };
 
 /* =====================================================================
-   3) UYGULAMA DURUMU + İŞ KUYRUĞU
+   5) UYGULAMA DURUMU + İŞ KUYRUĞU
    ===================================================================== */
 const $ = (id) => document.getElementById(id);
-const state = { recs: [], activeId: null, queueRunning: false, loadedModel: null, rate: 1 };
+const state = { recs: [], activeId: null, queueRunning: false, loadedModel: null, rate: 1, follow: true,
+                matches: [], mi: 0, editing: null, renaming: null };
 
 function newRec(file){
   return { id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name: file.name, blob: file,
@@ -373,15 +508,36 @@ async function ensureModel(){
   if (state.loadedModel === m) return;
   const st = $('modelStatus'); let last = Date.now();
   st.textContent = 'Motor başlatılıyor…';
-  // 45 sn hiç ilerleme olmazsa kullanıcıyı bilgilendir
   const watch = setInterval(() => { if (Date.now() - last > 45000) st.textContent = 'Bekleniyor… (internet yavaş olabilir; F12 > Console\'da hata var mı bak)'; }, 5000);
   try {
     await Engine.load(m, (p, info, bytes) => { last = Date.now();
       st.textContent = info ? info : `Model indiriliyor… %${Math.round(p*100)}` + (bytes ? ` (${(bytes/1048576).toFixed(0)} MB)` : ''); });
   } finally { clearInterval(watch); }
   state.loadedModel = m;
-  $('modelStatus').textContent = `Hazır · ${m.split('/')[1]}`;
+  st.textContent = `Hazır · ${m.split('/')[1]}`;
   $('engineInfo').textContent = `${Engine.name} · ${Engine.device === 'webgpu' ? 'GPU' : Engine.device === 'wasm' ? 'CPU' : Engine.device}`;
+}
+
+async function processRecord(r){
+  // 1) Sesi aç, kanalları ayır, konuşma bölgelerini bul (hızlı; modeli beklemez)
+  const dec = await decodeChannels(r.blob);
+  r.duration = dec.length / SR; r.stereo = dec.stereo;
+  r.peaks = dec.channels.map(c => peaks(c));
+  const plans = dec.stereo
+    ? [{ spk:'P', ch:dec.channels[0], other:dec.channels[1] }, { spk:'V', ch:dec.channels[1], other:dec.channels[0] }]
+    : [{ spk:null, ch:dec.channels[0], other:null }];
+  for (const p of plans) { p.regs = vad(p.ch, p.other); p.pieces = groupPieces(p.regs); }
+  if (dec.stereo) { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = plans[1].regs[0]?.raw ?? null; }
+  else { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = null; }
+  if (r.id === state.activeId) { drawWave(); renderLegend(); }
+  renderList(); DB.put(r);
+  // 2) Metne çevir
+  await ensureModel();
+  const total = plans.reduce((n, p) => n + p.pieces.length, 0) || 1; let done = 0;
+  const t0 = performance.now(), segs = [];
+  for (const p of plans) segs.push(...await transcribePieces(p.ch, p.pieces, p.spk, () => { r.progress = ++done / total; renderList(); }));
+  r.segments = cleanSegments(segs);
+  r.model = state.loadedModel; r.took = (performance.now() - t0) / 1000; r.status = 'hazir';
 }
 
 async function runQueue(){
@@ -389,17 +545,9 @@ async function runQueue(){
   try {
     let r;
     while ((r = state.recs.find(x => x.status === 'bekliyor'))) {
-      r.status = 'isleniyor'; r.progress = 0; renderList();
-      try {
-        const audio = await decodeTo16kMono(r.blob);
-        r.duration = audio.length / 16000; r.peaks = peaks(audio);
-        if (r.id === state.activeId) drawWave();
-        renderList();
-        await ensureModel();
-        const t0 = performance.now();
-        r.segments = await Engine.transcribe(audio, (p) => { r.progress = p; renderList(); });
-        r.status = 'hazir'; r.model = state.loadedModel; r.took = (performance.now() - t0) / 1000;
-      } catch (err) {
+      r.status = 'isleniyor'; r.progress = 0; r.error = null; renderList();
+      try { await processRecord(r); }
+      catch (err) {
         console.error(err); r.status = 'hata'; r.error = err.message;
         if (!state.loadedModel) $('modelStatus').textContent = 'Model yüklenemedi: ' + err.message;
       }
@@ -410,65 +558,144 @@ async function runQueue(){
 }
 
 /* =====================================================================
-   4) ARAYÜZ
+   6) ARAYÜZ — kayıt listesi ve filtreler
    ===================================================================== */
 const fmt = (s) => { s = Math.max(0, s||0); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = Math.floor(s%60);
   return (h ? h + ':' + String(m).padStart(2,'0') : String(m).padStart(2,'0')) + ':' + String(x).padStart(2,'0'); };
-const esc = (t) => t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const active = () => state.recs.find(r => r.id === state.activeId);
-const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', 1800); };
+const title = (r) => r.title || r.name;
+const spkName = { P:'Personel', V:'Vatandaş' };
+const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', 2200); };
+const countIn = (r, q, scope) => { let n = 0; for (const s of r.segments || []) { if (scope !== 'all' && s.spk !== scope) continue; let low = trLow(shown(s)), k = 0, j; while ((j = low.indexOf(q, k)) >= 0) { n++; k = j + q.length; } } return n; };
 
+function recPasses(r){
+  const q = trLow($('recQ').value.trim()), mode = $('recMode').value, scope = $('recScope').value;
+  r._hits = 0;
+  if (q) {
+    if (r.status !== 'hazir') return false;
+    r._hits = countIn(r, q, scope);
+    if (mode === 'in' ? r._hits === 0 : r._hits > 0) return false;
+  }
+  if ($('lateOn').checked) { const lim = +$('lateSec').value || 10; if (r.firstP == null || r.firstP <= lim) return false; }
+  if ($('vFirst').checked) { if (!r.stereo || r.firstV == null || !(r.firstP == null || r.firstV < r.firstP)) return false; }
+  return true;
+}
+function statsLine(r){
+  if (r.firstP == null && r.firstV == null) return '';
+  const lim = +$('lateSec').value || 10, parts = [];
+  if (r.firstP != null) parts.push(`${r.stereo ? 'Personel ilk ses' : 'İlk ses'}: <span class="${r.firstP > lim ? 'bad' : ''}">${r.firstP.toFixed(1)} sn${r.firstP > lim ? ' ⚠' : ''}</span>`);
+  else if (r.stereo) parts.push('<span class="bad">Personel sesi yok ⚠</span>');
+  if (r.stereo && r.firstV != null && (r.firstP == null || r.firstV < r.firstP)) parts.push('<span class="bad">Vatandaş önce konuştu</span>');
+  return parts.join(' · ');
+}
 function renderList(){
   const st = { bekliyor:'Sırada', isleniyor:'İşleniyor', hazir:'Hazır', hata:'Hata' };
-  $('list').innerHTML = state.recs.map(r => `
+  const vis = state.recs.filter(recPasses), q = $('recQ').value.trim();
+  const filtered = q || $('lateOn').checked || $('vFirst').checked;
+  $('lcount').textContent = filtered ? `${vis.length} / ${state.recs.length} kayıt filtreye uyuyor` : `${state.recs.length} kayıt`;
+  $('list').innerHTML = vis.map(r => `
     <div class="item ${r.id === state.activeId ? 'active' : ''}" data-id="${r.id}">
-      <div class="name" title="${esc(r.name)}">${esc(r.name)}</div>
-      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span><span>${r.duration ? fmt(r.duration) : ''}</span></div>
+      <div class="name" title="${esc(r.name)}">${state.renaming === r.id
+        ? `<input class="ren-in" value="${esc(title(r))}">`
+        : `<span>${esc(title(r))}</span><button class="ren" title="Adını değiştir">✏️</button>`}</div>
+      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
+        <span>${q && r._hits ? `<span class="hits">${r._hits}×</span> ` : ''}${r.duration ? fmt(r.duration) : ''}</span></div>
+      ${statsLine(r) ? `<div class="stats">${statsLine(r)}</div>` : ''}
       ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}
     </div>`).join('');
+  const ri = $('list').querySelector('.ren-in'); if (ri) { ri.focus(); ri.select(); }
+}
+function finishRename(save){
+  const r = state.recs.find(x => x.id === state.renaming), inp = $('list').querySelector('.ren-in');
+  if (r && inp && save) { const v = inp.value.trim(); r.title = v && v !== r.name ? v : undefined; DB.put(r); if (r.id === state.activeId) $('ptitle').textContent = title(r); }
+  state.renaming = null; renderList();
 }
 
 function select(id){
-  state.activeId = id; state.editing = null; resetFix(); const r = active(); const a = $('audio');
+  state.activeId = id; state.editing = null; state.follow = true; resetFix(); const r = active(); const a = $('audio');
   if (a._url) URL.revokeObjectURL(a._url);
   a._url = URL.createObjectURL(r.blob); a.src = a._url; a.playbackRate = state.rate;
-  $('ptitle').textContent = r.name;
+  $('ptitle').textContent = title(r);
   ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = false);
-  renderList(); renderTranscript(); drawWave();
+  // Kayıtlar arası arama yapıldıysa aynı kelimeyi metin içinde de ara
+  const q = $('recQ').value.trim(); if (q && $('recMode').value === 'in') $('search').value = q;
+  renderList(); renderTranscript(); drawWave(); renderLegend();
+  if (q && $('recMode').value === 'in') runSearch(true);
 }
 
+/* =====================================================================
+   7) ARAYÜZ — metin, arama, akışı takip
+   ===================================================================== */
+function visibleSeg(s){ const f = $('spkFilter').value; return f === 'all' || s.spk === f; }
 function renderTranscript(){
   const r = active(), box = $('transcript'), ready = r && r.status === 'hazir';
   ['search','copyBtn','txtBtn','srtBtn','fixMode'].forEach(b => $(b).disabled = !ready);
-  if (!r) { box.innerHTML = '<div class="empty">Kayıt seçilmedi.</div>'; return; }
-  if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; return; }
-  if (!r.segments.length) { box.innerHTML = '<div class="empty">Konuşma bulunamadı.</div>'; return; }
-  const q = $('search').value.trim().toLocaleLowerCase('tr');
+  $('redoBtn').disabled = !(r && (r.status === 'hazir' || r.status === 'hata'));
+  $('spkFilter').hidden = !(r && r.stereo && ready);
+  if (!r) { box.innerHTML = '<div class="empty">Kayıt seçilmedi.</div>'; updateSearchUi(); return; }
+  if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; updateSearchUi(); return; }
+  if (!r.segments.length) { box.innerHTML = '<div class="empty">Konuşma bulunamadı.</div>'; updateSearchUi(); return; }
+  const q = trLow($('search').value.trim());
   box.innerHTML = r.segments.map((s, i) => {
-    let html = esc(s.text), hit = true;
-    if (q) { const low = s.text.toLocaleLowerCase('tr'); hit = low.includes(q);
-      if (hit) { let o = '', k = 0, j; while ((j = low.indexOf(q, k)) >= 0) { o += esc(s.text.slice(k, j)) + '<mark>' + esc(s.text.slice(j, j + q.length)) + '</mark>'; k = j + q.length; } html = o + esc(s.text.slice(k)); } }
+    if (!visibleSeg(s)) return '';
+    const txt = shown(s);
+    let html = esc(txt), hit = true;
+    if (q) { const low = trLow(txt); hit = low.includes(q);
+      if (hit) { let o = '', k = 0, j; while ((j = low.indexOf(q, k)) >= 0) { o += esc(txt.slice(k, j)) + '<mark>' + esc(txt.slice(j, j + q.length)) + '</mark>'; k = j + q.length; } html = o + esc(txt.slice(k)); } }
     const fix = s.fix ? `<div class="fix">✔ ${esc(s.fix)} <button class="cmp" title="Önce söyleneni, sonra doğrusunu çal">▶ Karşılaştır</button></div>` : '';
     const editor = state.editing === i ? `<div class="editor" data-i="${i}">
         <textarea placeholder="Doğrusu nasıl söylenmeliydi?">${esc(s.fix || '')}</textarea>
         <div class="row"><button class="ed-rec">🎙 Söyleyerek yazdır</button><button class="ed-play">🔊 Nasıl duyulacak?</button><span class="ed-st note"></span></div>
         <div class="row"><button class="ed-save primary">Kaydet</button><button class="ed-cancel">Vazgeç</button>${s.fix ? '<button class="ed-del">Düzeltmeyi sil</button>' : ''}</div></div>` : '';
-    return `<div class="seg ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}</span><span class="txt"><span class="orig">${html}</span>${fix}</span><button class="fixb" title="Doğrusunu yaz">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${editor}`;
+    const who = s.spk ? `<span class="who ${s.spk}">${spkName[s.spk]}</span>` : '';
+    return `<div class="seg ${s.spk || ''} ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}${who}</span><span class="txt"><span class="orig">${html}</span>${fix}</span><button class="fixb" title="Doğrusunu yaz">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${editor}`;
   }).join('');
   const ta = box.querySelector('.editor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
+  markCurrentHit();
 }
+
+// --- Metin içi arama: eşleşmeye git, sayaç, ▲▼ / Enter
+function runSearch(jump){
+  const r = active(), q = trLow($('search').value.trim());
+  state.matches = (r && r.status === 'hazir' && q) ? r.segments.map((s, i) => [s, i]).filter(([s]) => visibleSeg(s) && trLow(shown(s)).includes(q)).map(([, i]) => i) : [];
+  state.mi = 0;
+  renderTranscript();
+  if (jump && state.matches.length) goHit(0);
+  updateSearchUi();
+}
+function goHit(k){
+  const n = state.matches.length; if (!n) return;
+  state.mi = (k + n) % n; setFollow(false);
+  markCurrentHit();
+  const el = document.querySelector(`.seg[data-i="${state.matches[state.mi]}"]`);
+  el && el.scrollIntoView({ block:'center', behavior:'smooth' });
+  updateSearchUi();
+}
+function markCurrentHit(){
+  document.querySelectorAll('.seg.cur').forEach(e => e.classList.remove('cur'));
+  if (!state.matches.length) return;
+  const el = document.querySelector(`.seg[data-i="${state.matches[state.mi]}"]`); el && el.classList.add('cur');
+}
+function updateSearchUi(){
+  const q = $('search').value.trim(), n = state.matches.length;
+  $('searchCnt').textContent = !q ? '' : n ? `${state.mi + 1} / ${n}` : 'Bulunamadı';
+  $('prevHit').disabled = $('nextHit').disabled = n < 2;
+}
+// --- Akışı takip: kayıt çalarken metin kendiliğinden kayar; kullanıcı başka yere bakınca durur
+function setFollow(on){ state.follow = on; $('followBtn').hidden = on; }
 
 let lastNow = -1;
 function syncHighlight(force){
   const r = active(); if (!r || r.status !== 'hazir') return;
   const t = $('audio').currentTime;
-  let idx = -1; for (let i = 0; i < r.segments.length; i++) { if (r.segments[i].start <= t + 0.05) idx = i; else break; }
+  let idx = -1; for (let i = 0; i < r.segments.length; i++) { if (!visibleSeg(r.segments[i])) continue; if (r.segments[i].start <= t + 0.05) idx = i; else break; }
   if (idx === lastNow && !force) return;
   lastNow = idx;
   document.querySelectorAll('.seg.now').forEach(e => e.classList.remove('now'));
   const el = document.querySelector(`.seg[data-i="${idx}"]`);
-  if (el) { el.classList.add('now'); if (!$('audio').paused) el.scrollIntoView({ block:'center', behavior:'smooth' }); }
+  if (el) { el.classList.add('now'); if (state.follow && !$('audio').paused) el.scrollIntoView({ block:'center', behavior:'smooth' }); }
 }
 
 function drawWave(){
@@ -476,22 +703,30 @@ function drawWave(){
   c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
   const g = c.getContext('2d'); g.clearRect(0,0,c.width,c.height);
   if (!r || !r.peaks) return;
-  const a = $('audio'), dur = a.duration || r.duration || 1, pos = (a.currentTime || 0) / dur;
-  const n = r.peaks.length, w = c.width / n, mid = c.height/2, max = Math.max(...r.peaks) || 1;
-  for (let i = 0; i < n; i++) {
-    const h = Math.max(1, r.peaks[i] / max * mid * 0.95);
-    g.fillStyle = (i / n) < pos ? '#60a5fa' : '#3a4654';
-    g.fillRect(i * w, mid - h, Math.max(1, w - 0.3), h * 2);
-  }
+  const P = typeof r.peaks[0] === 'number' ? [r.peaks] : r.peaks;   // eski kayıtlar tek dizi
+  const a = $('audio'), dur = a.duration || r.duration || 1, pos = (a.currentTime || 0) / dur, mid = c.height / 2;
+  const cols = P.length === 2 ? [['#60a5fa','#2b4566'], ['#4ade80','#29543a']] : [['#60a5fa','#3a4654']];
+  P.forEach((pk, ci) => {
+    const n = pk.length, w = c.width / n, max = Math.max(...pk) || 1;
+    for (let i = 0; i < n; i++) {
+      const h = Math.max(1, pk[i] / max * mid * 0.95);
+      g.fillStyle = cols[ci][(i / n) < pos ? 0 : 1];
+      if (P.length === 2) g.fillRect(i * w, ci === 0 ? mid - h : mid, Math.max(1, w - 0.3), h);   // üst: personel, alt: vatandaş
+      else g.fillRect(i * w, mid - h, Math.max(1, w - 0.3), h * 2);
+    }
+  });
+}
+function renderLegend(){
+  const r = active();
+  $('legend').innerHTML = r && r.stereo ? '▲ <b class="p">Personel</b> (sol kanal) &nbsp; ▼ <b class="v">Vatandaş</b> (sağ kanal)' : (r && r.peaks ? 'Tek kanallı (mono) kayıt — konuşmacı ayrımı yapılamaz' : '');
 }
 
 /* =====================================================================
-   5) METİN → SES (tarayıcının yerleşik sesleri; ücretsiz, indirme yok)
-   İleride Piper (yerel) veya bulut ses motoru aynı speak() arayüzüyle takılabilir.
+   8) METİN → SES
    ===================================================================== */
 const DEFAULT_SPK = 'Anlatıcı';
 const TTS = {
-  ok: 'speechSynthesis' in window, voices: [], map: {},   // map: konuşmacı -> { voice, pitch }
+  ok: 'speechSynthesis' in window, voices: [], map: {},
   init(){
     if (!this.ok) { $('ttsNote').textContent = 'Bu tarayıcı seslendirmeyi desteklemiyor.'; $('ttsPlay').disabled = true; return; }
     const load = () => {
@@ -504,7 +739,6 @@ const TTS = {
     };
     load(); speechSynthesis.onvoiceschanged = load;
   },
-  // "Ad: metin" satırlarını konuşmacılara ayırır; adsız satır önceki konuşmacıya devam eder
   parse(text){
     const lines = [], spks = [];
     let cur = DEFAULT_SPK;
@@ -518,7 +752,6 @@ const TTS = {
     }
     return { lines, spks };
   },
-  // Yeni konuşmacıya otomatik ses: farklı ses varsa farklısını, yoksa aynı sesi farklı tonda
   assign(spk, idx){
     if (this.map[spk]) return this.map[spk];
     const n = this.voices.length || 1;
@@ -535,16 +768,15 @@ const TTS = {
     speechSynthesis.speak(u);
     return u;
   },
-  // Uzun metinler bazı tarayıcılarda yarıda kesildiği için cümle cümle kuyruğa alınır
   _sentences: (t) => (t.match(/[^.!?…]+[.!?…]*/g) || []).map(s => s.trim()).filter(Boolean),
-  speak(text, onDone){               // tek ses (🔊 düğmeleri, düzeltmeler); bitince onDone çağrılır
+  speak(text, onDone){
     if (!this.ok || !text.trim()) { onDone && onDone(); return; }
     speechSynthesis.cancel();
     const g = ++this.gen; let last;
     for (const s of this._sentences(text)) last = this._utter(s, { voice:0, pitch:1 });
     if (last && onDone) last.onend = () => { if (g === this.gen) onDone(); };
   },
-  speakScript(text){                 // diyalog
+  speakScript(text){
     if (!this.ok) return;
     speechSynthesis.cancel();
     const { lines, spks } = this.parse(text);
@@ -556,7 +788,6 @@ const TTS = {
   },
   stop(){ this.gen++; if (this.ok) { speechSynthesis.cancel(); markTalking(null); } }
 };
-
 function renderSpeakers(){
   const { spks } = TTS.parse($('ttsText').value || '');
   const list = spks.length ? spks : [DEFAULT_SPK];
@@ -570,9 +801,7 @@ function renderSpeakers(){
   }).join('');
   $('spkBox').querySelectorAll('.row').forEach(r => { const c = TTS.map[r.dataset.spk]; r.querySelector('[data-k=voice]').value = c.voice; });
 }
-function markTalking(spk){
-  $('spkBox').querySelectorAll('.row').forEach(r => r.classList.toggle('talking', r.dataset.spk === spk));
-}
+function markTalking(spk){ $('spkBox').querySelectorAll('.row').forEach(r => r.classList.toggle('talking', r.dataset.spk === spk)); }
 $('spkBox').onchange = (e) => { const r = e.target.closest('.row'); const c = TTS.map[r.dataset.spk]; c[e.target.dataset.k] = +e.target.value; };
 $('spkBox').onclick = (e) => { if (e.target.dataset.k !== 'test') return; const r = e.target.closest('.row');
   speechSynthesis.cancel(); TTS._utter(`Merhaba, ben ${r.dataset.spk}.`, TTS.map[r.dataset.spk]); };
@@ -593,16 +822,13 @@ $('ttsClose').onclick = () => { TTS.stop(); $('ttsPanel').hidden = true; };
 $('ttsPanel').onclick = (e) => { if (e.target.id === 'ttsPanel') $('ttsClose').click(); };
 $('ttsPlay').onclick = () => { $('audio').pause(); TTS.speakScript($('ttsText').value); };
 $('ttsStop').onclick = () => TTS.stop();
-$('ttsFromRec').onclick = () => { const r = active(); if (r && r.status === 'hazir') { $('ttsText').value = plainText(r, false); renderSpeakers(); } else toast('Önce metne çevrilmiş bir kayıt seç'); };
+$('ttsFromRec').onclick = () => { const r = active(); if (r && r.status === 'hazir') {
+  $('ttsText').value = r.segments.map(s => (s.spk ? spkName[s.spk] + ': ' : '') + shown(s)).join('\n'); renderSpeakers(); } else toast('Önce metne çevrilmiş bir kayıt seç'); };
 
 /* =====================================================================
-   6) DÜZELTME / EĞİTİM MODU
-   - Karşılaştır: önce kayıttaki cümle, ardından doğrusu (sentetik sesle)
-   - Düzeltilmiş akış: kayıt çalarken düzeltilen cümlenin yerine doğrusu seslendirilir, sonra kayıt devam eder
+   9) DÜZELTME / EĞİTİM MODU
    ===================================================================== */
-const fx = { mode:false, played:new Set(), inFix:false, stopAt:null, afterStop:null, comparing:false, player:null };
-
-/* Mikrofonla sesli düzeltme: kayıt alınır, saklanır ve aynı motorla yazıya çevrilir */
+const fx = { mode:false, played:new Set(), inFix:false, stopAt:null, afterStop:null, comparing:false };
 const Rec = {
   mr:null, stream:null, chunks:[],
   active(){ return this.mr && this.mr.state === 'recording'; },
@@ -624,7 +850,7 @@ async function recToggle(ed){
   const btn = ed.querySelector('.ed-rec'), st = ed.querySelector('.ed-st');
   if (!Rec.active()) {
     try { await Rec.start(); } catch { toast('Mikrofona erişilemedi (tarayıcı izni gerekli)'); return; }
-    $('audio').pause(); stopFixAudio();
+    $('audio').pause();
     btn.textContent = '⏹ Bitir'; btn.classList.add('on'); st.textContent = 'Dinliyorum… doğru cümleyi söyle, bitince "Bitir"e bas';
     return;
   }
@@ -633,19 +859,18 @@ async function recToggle(ed){
   st.textContent = 'Yazıya çevriliyor…';
   try {
     await ensureModel();
-    const segs = await Engine.transcribe(await decodeTo16kMono(blob));
+    const dec = await decodeChannels(blob), ch = dec.channels[0];
+    let pieces = groupPieces(vad(ch, null)); if (!pieces.length) pieces = [{ s:0, e:Math.min(ch.length / SR, MAX_PIECE) }];
+    const segs = cleanSegments(await transcribePieces(ch, pieces, null));
     const text = segs.map(s => s.text).join(' ').trim();
     if (text) ed.querySelector('textarea').value = text;
     st.textContent = text ? 'Hazır. Gerekirse metni düzelt, sonra Kaydet.' : 'Anlaşılamadı; tekrar söyle ya da elle yaz.';
   } catch (err) { st.textContent = 'Yazıya çevrilemedi; tekrar dene ya da elle yaz.'; }
 }
-function stopFixAudio(){ if (fx.player) { const p = fx.player; fx.player = null; p.pause(); } }
-// Düzeltme her zaman sentetik sesle okunur
 function playFix(seg, onDone){ TTS.speak(seg.fix, onDone); }
 const markFixing = (seg) => { document.querySelectorAll('.seg.fixing').forEach(e => e.classList.remove('fixing'));
   if (seg) { const i = active().segments.indexOf(seg); const el = document.querySelector(`.seg[data-i="${i}"]`); el && el.classList.add('fixing'); } };
-function resetFix(){ fx.played.clear(); fx.stopAt = null; fx.afterStop = null; fx.comparing = false; stopFixAudio(); if (fx.inFix) { fx.inFix = false; TTS.stop(); } markFixing(null); }
-
+function resetFix(){ fx.played.clear(); fx.stopAt = null; fx.afterStop = null; fx.comparing = false; if (fx.inFix) { fx.inFix = false; TTS.stop(); } markFixing(null); }
 function compare(seg){
   const a = $('audio'); resetFix();
   fx.comparing = true; fx.stopAt = seg.end;
@@ -669,17 +894,19 @@ $('fixMode').onclick = () => { fx.mode = !fx.mode; $('fixMode').classList.toggle
 
 /* ---------- Dışa aktarım ---------- */
 const plainText = (r, withTime) => r.segments.map(s =>
-  (withTime ? `[${fmt(s.start)}] ` : '') + s.text + (withTime && s.fix ? `\n        → Doğrusu: ${s.fix}` : '')).join('\n');
+  (withTime ? `[${fmt(s.start)}] ` : '') + (s.spk ? spkName[s.spk] + ': ' : '') + shown(s) + (withTime && s.fix ? `\n        → Doğrusu: ${s.fix}` : '')).join('\n');
 const srtTime = (s) => { const ms = Math.round(s*1000); const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000), x = Math.floor(ms%60000/1000), z = ms%1000;
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')},${String(z).padStart(3,'0')}`; };
-const toSrt = (r) => r.segments.map((s, i) => `${i+1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${s.text}\n`).join('\n');
+const toSrt = (r) => r.segments.map((s, i) => `${i+1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${s.spk ? spkName[s.spk] + ': ' : ''}${shown(s)}\n`).join('\n');
 function download(name, text){
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type:'text/plain;charset=utf-8' }));
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const baseName = (r) => r.name.replace(/\.[^.]+$/, '');
+const baseName = (r) => title(r).replace(/\.[^.]+$/, '');
 
-/* ---------- Olaylar ---------- */
+/* =====================================================================
+   10) OLAYLAR
+   ===================================================================== */
 const drop = $('drop');
 drop.onclick = () => $('fileIn').click();
 $('fileIn').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
@@ -687,17 +914,28 @@ $('fileIn').onchange = (e) => { addFiles([...e.target.files]); e.target.value = 
 ['dragleave','drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 document.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
 
-$('list').onclick = (e) => { const it = e.target.closest('.item'); if (it) select(it.dataset.id); };
+// Liste: seçim ve ad değiştirme
+$('list').onclick = (e) => {
+  if (e.target.closest('.ren-in')) return;
+  const it = e.target.closest('.item'); if (!it) return;
+  if (e.target.closest('.ren')) { state.renaming = it.dataset.id; renderList(); return; }
+  if (state.renaming) finishRename(true);
+  select(it.dataset.id);
+};
+$('list').ondblclick = (e) => { const it = e.target.closest('.item'); if (it && e.target.closest('.name')) { state.renaming = it.dataset.id; renderList(); } };
+$('list').addEventListener('keydown', (e) => { if (!e.target.classList.contains('ren-in')) return; if (e.key === 'Enter') finishRename(true); if (e.key === 'Escape') finishRename(false); });
+$('list').addEventListener('focusout', (e) => { if (e.target.classList.contains('ren-in')) setTimeout(() => state.renaming && finishRename(true), 0); });
+// Liste filtreleri
+['recQ','recMode','recScope','lateOn','lateSec','vFirst'].forEach(id => $(id).addEventListener(id === 'recQ' || id === 'lateSec' ? 'input' : 'change', () => renderList()));
+
+// Metin alanı
 $('transcript').onclick = (e) => {
   const ed = e.target.closest('.editor');
   if (ed) {
     const r = active(), seg = r.segments[+ed.dataset.i];
     if (e.target.closest('.ed-rec')) { recToggle(ed); return; }
     if (e.target.closest('.ed-play')) { $('audio').pause(); TTS.speak(ed.querySelector('textarea').value); return; }
-    if (e.target.closest('.ed-save')) {
-      const text = ed.querySelector('textarea').value.trim();
-      if (text) seg.fix = text; else delete seg.fix;
-    }
+    if (e.target.closest('.ed-save')) { const text = ed.querySelector('textarea').value.trim(); if (text) seg.fix = text; else delete seg.fix; }
     else if (e.target.closest('.ed-del')) { delete seg.fix; }
     else if (!e.target.closest('.ed-cancel')) return;
     if (Rec.active()) Rec.stop();
@@ -705,42 +943,71 @@ $('transcript').onclick = (e) => {
   }
   const s = e.target.closest('.seg'); if (!s) return;
   const i = +s.dataset.i, seg = active().segments[i];
-  if (e.target.closest('.say')) { $('audio').pause(); TTS.speak(seg.text); return; }
-  if (e.target.closest('.fixb')) { if (Rec.active()) Rec.stop();
-    state.editing = state.editing === i ? null : i; renderTranscript(); return; }
+  if (e.target.closest('.say')) { $('audio').pause(); TTS.speak(shown(seg)); return; }
+  if (e.target.closest('.fixb')) { if (Rec.active()) Rec.stop(); state.editing = state.editing === i ? null : i; renderTranscript(); return; }
   if (e.target.closest('.cmp')) { compare(seg); return; }
-  resetFix(); const a = $('audio'); a.currentTime = active().segments[+s.dataset.i].start; a.play(); };
+  resetFix(); setFollow(true); const a = $('audio'); a.currentTime = seg.start; a.play(); };
+// Kullanıcı metni kendisi kaydırırsa otomatik takibi bırak
+['wheel','touchmove'].forEach(ev => $('transcript').addEventListener(ev, () => { if (!$('audio').paused) setFollow(false); }, { passive:true }));
+$('followBtn').onclick = () => {
+  setFollow(true); syncHighlight(true);
+  const el = document.querySelector('.seg.now'); el && el.scrollIntoView({ block:'center', behavior:'smooth' });
+};
 
+// Arama
+$('search').oninput = () => runSearch(true);
+$('search').onkeydown = (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); if (state.matches.length) goHit(state.mi + (e.shiftKey ? -1 : 1)); }
+  if (e.key === 'Escape') { $('search').value = ''; runSearch(false); }
+};
+$('nextHit').onclick = () => goHit(state.mi + 1);
+$('prevHit').onclick = () => goHit(state.mi - 1);
+$('spkFilter').onchange = () => runSearch(false);
+
+// Oynatıcı
 const audio = $('audio');
 $('playBtn').onclick = () => {
   if (fx.inFix || fx.stopAt != null) { const keep = new Set(fx.played); resetFix(); fx.played = keep; }
   audio.paused ? audio.play() : audio.pause(); };
-audio.addEventListener('seeked', () => { for (const k of [...fx.played]) if (active() && active().segments[k].start >= audio.currentTime - 0.1) fx.played.delete(k); });
+audio.addEventListener('seeked', () => { for (const k of [...fx.played]) if (active() && active().segments[k] && active().segments[k].start >= audio.currentTime - 0.1) fx.played.delete(k); });
 $('backBtn').onclick = () => audio.currentTime = Math.max(0, audio.currentTime - 5);
 $('fwdBtn').onclick = () => audio.currentTime += 5;
 audio.onplay = () => $('playBtn').textContent = '⏸ Durdur';
 audio.onpause = () => $('playBtn').textContent = '▶ Oynat';
 audio.ontimeupdate = () => { $('time').textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`; syncHighlight(); drawWave(); if (active()) fixTick(audio.currentTime); };
 audio.onloadedmetadata = () => { $('time').textContent = `00:00 / ${fmt(audio.duration)}`; drawWave(); };
-$('wave').onclick = (e) => { if (!audio.duration) return; const b = e.target.getBoundingClientRect(); audio.currentTime = (e.clientX - b.left) / b.width * audio.duration; };
+$('wave').onclick = (e) => { if (!audio.duration) return; const b = e.target.getBoundingClientRect(); audio.currentTime = (e.clientX - b.left) / b.width * audio.duration; setFollow(true); };
 $('speed').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; state.rate = +b.dataset.r; audio.playbackRate = state.rate;
   $('speed').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
-$('search').oninput = () => renderTranscript();
+
+// Araç çubuğu
 $('copyBtn').onclick = async () => { try { await navigator.clipboard.writeText(plainText(active(), true)); toast('Kopyalandı'); } catch { toast('Kopyalanamadı'); } };
 $('txtBtn').onclick = () => download(baseName(active()) + '.txt', plainText(active(), true));
 $('srtBtn').onclick = () => download(baseName(active()) + '.srt', toSrt(active()));
+$('redoBtn').onclick = () => { const r = active(); if (!r) return;
+  if (r.segments.some(s => s.fix) && !confirm('Bu kayıttaki düzeltmeler (✏️) silinecek. Yeniden çevrilsin mi?')) return;
+  r.status = 'bekliyor'; r.segments = []; r.progress = 0; state.editing = null; resetFix(); DB.put(r); renderList(); renderTranscript(); runQueue(); };
 $('delBtn').onclick = () => { const r = active(); if (!r) return; DB.del(r.id); state.recs = state.recs.filter(x => x !== r);
   audio.pause(); audio.removeAttribute('src'); state.activeId = null; $('ptitle').textContent = 'Kayıt seçilmedi';
   ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = true);
-  if (state.recs[0]) select(state.recs[0].id); else { renderList(); renderTranscript(); drawWave(); } };
-$('modelSel').onchange = () => { $('modelStatus').textContent = 'Yeni model ilk kayıtta yüklenecek'; };
-document.addEventListener('keydown', (e) => { if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && $('ttsPanel').hidden && active()) { e.preventDefault(); $('playBtn').click(); } });
+  if (state.recs[0]) select(state.recs[0].id); else { renderList(); renderTranscript(); drawWave(); renderLegend(); } };
+$('modelSel').onchange = () => { try { localStorage.setItem('ses-metin-model', $('modelSel').value); } catch {}
+  $('modelStatus').textContent = 'Yeni model sıradaki kayıtta yüklenecek'; };
+document.addEventListener('keydown', (e) => { if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && $('ttsPanel').hidden && $('dictPanel').hidden && active()) { e.preventDefault(); $('playBtn').click(); } });
 addEventListener('resize', drawWave);
 
-/* ---------- Başlangıç: kayıtlı kayıtları geri yükle ---------- */
+// Sözlük
+$('dictOpen').onclick = () => { $('dictText').value = Dict.toText(); $('dictInfo').textContent = `${Dict.rules.length} kural`; $('dictPanel').hidden = false; $('dictText').focus(); };
+$('dictClose').onclick = () => { $('dictPanel').hidden = true; };
+$('dictPanel').onclick = (e) => { if (e.target.id === 'dictPanel') $('dictClose').click(); };
+$('dictSave').onclick = () => { Dict.rules = Dict.parse($('dictText').value); Dict.save(); $('dictPanel').hidden = true;
+  toast(`Sözlük kaydedildi: ${Dict.rules.length} kural, tüm kayıtlara uygulandı`); renderList(); runSearch(false); };
+
+/* ---------- Başlangıç ---------- */
 (async () => {
+  try { const m = localStorage.getItem('ses-metin-model'); if (m && [...$('modelSel').options].some(o => o.value === m)) $('modelSel').value = m; } catch {}
   const saved = (await DB.all()).sort((a,b) => b.added - a.added);
-  for (const r of saved) if (r.status === 'isleniyor') r.status = 'bekliyor'; // yarıda kalanlar tekrar sıraya
+  for (const r of saved) if (r.status === 'isleniyor') r.status = 'bekliyor';
   state.recs = saved; renderList();
   if (saved[0]) select(saved[0].id);
   runQueue();

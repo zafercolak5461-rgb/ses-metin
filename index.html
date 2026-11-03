@@ -783,10 +783,19 @@ function drawWave(){
       else g.fillRect(i * w, mid - h, Math.max(1, w - 0.3), h * 2);
     }
   });
+  // Programın "konuşma" saydığı bölgeler: üst kenar personel, alt kenar vatandaş
+  if (r.regions && r.duration) {
+    const bar = 4 * dpr, x = (t) => t / r.duration * c.width;
+    for (const [k, list] of Object.entries(r.regions)) {
+      g.fillStyle = k === 'V' ? '#4ade80' : '#60a5fa';
+      const y = k === 'V' ? c.height - bar : 0;
+      for (const [s, e] of list) g.fillRect(x(s), y, Math.max(2, x(e) - x(s)), bar);
+    }
+  }
 }
 function renderLegend(){
   const r = active();
-  $('legend').innerHTML = r && r.stereo ? '▲ <b class="p">Personel</b> (sol kanal) &nbsp; ▼ <b class="v">Vatandaş</b> (sağ kanal)' : (r && r.peaks ? 'Tek kanallı (mono) kayıt — konuşmacı ayrımı yapılamaz' : '');
+  $('legend').innerHTML = r && r.stereo ? '▲ <b class="p">Personel</b> (sol kanal) &nbsp; ▼ <b class="v">Vatandaş</b> (sağ kanal) &nbsp; · kenardaki çizgiler: programın konuşma olarak algıladığı yerler' : (r && r.peaks ? 'Tek kanallı (mono) kayıt — konuşmacı ayrımı yapılamaz' : '');
 }
 
 /* =====================================================================

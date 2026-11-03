@@ -91,6 +91,22 @@
   .editor{margin:4px 0 10px 84px;display:flex;flex-direction:column;gap:6px}
   .editor textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--accent);border-radius:6px;padding:8px;min-height:60px}
   .seg.fixing{background:rgba(34,197,94,.15)}
+  .seg .edb{opacity:0;border:0;background:none;padding:0 4px;font-size:15px;align-self:flex-start}
+  .seg:hover .edb,.seg.now .edb{opacity:.8}
+  .seg .edmark{font-size:11px;color:var(--accent2);margin-left:6px}
+  .teditor{margin:4px 0 10px 84px;display:flex;flex-direction:column;gap:6px}
+  .teditor textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--accent2);border-radius:6px;padding:8px;min-height:50px}
+  .card.wide{width:min(1000px,96vw);max-height:92vh}
+  .dtwrap{overflow:auto;max-height:56vh;border:1px solid var(--line);border-radius:8px}
+  .dt{width:100%;border-collapse:collapse;font-size:13px}
+  .dt th{position:sticky;top:0;background:var(--panel2);text-align:left;font-weight:600;padding:6px;z-index:1}
+  .dt td{border-top:1px solid var(--line);padding:4px 6px;vertical-align:middle}
+  .dt input:not([type]),.dt input[type=text]{width:100%;box-sizing:border-box;padding:4px 6px}
+  .dt tr.off td{opacity:.45}
+  .dt .w{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:var(--muted)}
+  .dt .w.on{color:var(--text)}
+  .dt button{padding:2px 6px}
+  #dictBulk[hidden]{display:none}
   .seg.dropped{opacity:.55;cursor:default}
   .seg.dropped:hover{background:none}
   .seg.dropped .why{font-size:11px;color:var(--err);border:1px solid var(--err);border-radius:4px;padding:0 4px;margin-left:6px}
@@ -235,13 +251,37 @@
 </div>
 
 <div class="modal" id="dictPanel" hidden>
-  <div class="card">
-    <div class="row"><h2>📖 Düzeltme Sözlüğü</h2><span class="sp"></span><button id="dictClose">✕</button></div>
-    <div class="note">Programın sık yanlış yazdığı kelime ya da kelime gruplarını her satıra bir tane olacak şekilde yaz: <b>yanlış =&gt; doğru</b><br>
-      Örnek: <code>yıldığınız için =&gt; aradığınız için</code><br>
-      Tek kelime yerine kelime grubu yazmak daha güvenlidir. Sözlük tüm kayıtlara (eskiler dahil) hemen uygulanır; orijinal metin silinmez.</div>
-    <textarea id="dictText" spellcheck="false" placeholder="yıldığınız için => aradığınız için&#10;eridiniz için => aradığınız için"></textarea>
-    <div class="row"><span class="note" id="dictInfo"></span><span class="sp"></span><button id="dictSave" class="primary">Kaydet</button></div>
+  <div class="card wide">
+    <div class="row"><h2>📖 Düzeltme Sözlüğü</h2><span class="note" id="dictInfo"></span><span class="sp"></span><button id="dictClose">✕</button></div>
+    <div class="row">
+      <input id="dictQ" placeholder="Sözlükte ara…" style="flex:1;min-width:160px">
+      <select id="dictGrp" title="Gruba göre süz"></select>
+      <button id="dictAdd" class="primary">＋ Yeni kural</button>
+      <button id="dictBulkBtn" title="Excel'den kopyalayıp yapıştır">📋 Toplu ekle</button>
+      <button id="dictImport" title="CSV / metin dosyasından al">⤒ Dosyadan al</button><input type="file" id="dictFile" accept=".csv,.txt" hidden>
+      <button id="dictExport" title="Excel'de açılabilen dosya olarak indir (yedek)">⤓ Excel'e aktar</button>
+    </div>
+    <div id="dictBulk" class="spk" hidden>
+      <div class="note">Excel'de sütunları seçip kopyala ve buraya yapıştır. Sütun sırası: <b>Yanlış · Doğru · Grup · Kime</b> (Grup ve Kime boş olabilir; Kime: Personel / Vatandaş / Herkes).
+        Ya da her satıra <code>yanlış =&gt; doğru</code> yaz. Aynı "yanlış" zaten varsa güncellenir.</div>
+      <textarea id="dictBulkText" spellcheck="false" style="min-height:110px" placeholder="senesine yardımcı&#9;size nasıl yardımcı&#9;Açılış&#9;Personel&#10;ekimlilik rümenizi =&gt; kimlik numaranızı"></textarea>
+      <div class="row"><span class="sp"></span><button id="dictBulkCancel">Vazgeç</button><button id="dictBulkAdd" class="primary">Ekle</button></div>
+    </div>
+    <datalist id="dictGrps"></datalist>
+    <div class="dtwrap"><table class="dt"><thead><tr><th title="Açık / kapalı"></th><th>Yanlış (programın yazdığı)</th><th>Doğru</th><th style="width:120px">Grup</th><th style="width:105px">Kime</th><th class="w" title="Kayıtlarda kaç yerde uygulanıyor">Kullanım</th><th></th></tr></thead>
+      <tbody id="dictBody"></tbody></table></div>
+    <div class="note">Kurallar tam kelime olarak eşleşir; aradaki virgül/nokta farkını önemsemez. Uzun kalıp kısa olandan önce uygulanır. Orijinal metin hiç silinmez; kuralı kapatınca eski hali geri gelir.
+      Bir cümledeki hatayı en kolay yoldan eklemek için metinde satırın yanındaki <b>✎</b> düğmesini kullan.</div>
+  </div>
+</div>
+
+<div class="modal" id="learnPanel" hidden>
+  <div class="card wide">
+    <div class="row"><h2>📖 Sözlüğe eklensin mi?</h2><span class="sp"></span><button id="learnClose">✕</button></div>
+    <div class="note">Düzeltmenden aşağıdaki kurallar çıkarıldı. Eklersen aynı hata eski kayıtlar dahil her yerde düzelir. Kutulardaki metni değiştirebilirsin.
+      <b>"Başka yerde"</b> sütunu kuralın diğer kayıtlarda kaç yerde daha uygulanacağını gösterir; beklemediğin kadar yüksekse kuralı daha uzun yaz.</div>
+    <div class="dtwrap"><table class="dt"><thead><tr><th></th><th>Yanlış</th><th>Doğru</th><th style="width:120px">Grup</th><th style="width:105px">Kime</th><th class="w">Başka yerde</th></tr></thead><tbody id="learnBody"></tbody></table></div>
+    <div class="row"><span class="sp"></span><button id="learnSkip">Ekleme</button><button id="learnAdd" class="primary">Seçilenleri ekle</button></div>
   </div>
 </div>
 
@@ -371,7 +411,7 @@ const LOCAL_URL = 'http://127.0.0.1:8765';
 const LocalEngine = {
   name: 'Bilgisayar motoru', device: 'node', model: null, ctrl: null,
   async ping(){
-    try { const c = new AbortController(); setTimeout(() => c.abort(), 1500);
+    try { const c = new AbortController(); setTimeout(() => c.abort(), 30000);   // Edge izin sorarken bekler; kapalı motorda zaten hemen hata döner
           const r = await fetch(LOCAL_URL + '/durum', { signal: c.signal }); return r.ok; } catch { return false; }
   },
   async load(model, onProgress){
@@ -397,7 +437,7 @@ const LocalEngine = {
   abort(){ this.ctrl && this.ctrl.abort(); }
 };
 let Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
-if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput }; });
+if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, learnFromEdit, shown }; });
 
 /* =====================================================================
    2) SES İŞLEME: kanal ayırma, konuşma bulma (VAD), normalize, parçalama
@@ -698,24 +738,130 @@ function simText(a, b){
    3) DÜZELTME SÖZLÜĞÜ — gösterimde uygulanır, orijinal metin saklı kalır
    ===================================================================== */
 const Dict = {
-  KEY:'ses-metin-sozluk', rules:[],
-  load(){ try { this.rules = JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch { this.rules = []; } },
-  save(){ try { localStorage.setItem(this.KEY, JSON.stringify(this.rules)); } catch {} },
-  parse(text){ return text.split('\n').map(l => l.split('=>')).filter(p => p.length === 2 && p[0].trim()).map(p => ({ from:p[0].trim(), to:p[1].trim() })); },
-  toText(){ return this.rules.map(r => `${r.from} => ${r.to}`).join('\n'); },
-  apply(t){
-    if (!t || !this.rules.length) return t;
-    for (const r of this.rules) {
-      const low = trLow(t), f = trLow(r.from); if (!low.includes(f)) continue;
-      let out = '', k = 0, j;
-      while ((j = low.indexOf(f, k)) >= 0) { out += t.slice(k, j) + r.to; k = j + f.length; }
-      t = out + t.slice(k);
+  KEY:'ses-metin-sozluk2', OLD:'ses-metin-sozluk', rules:[], cache:new Map(), _c:null,
+  mk(from = '', to = '', grp = '', spk = 'all', on = true){ return { id: Math.random().toString(36).slice(2, 10), from, to, grp, spk, on }; },
+  load(){
+    let r = null; try { r = JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch {}
+    if (!Array.isArray(r)) {                       // ilk açılış: eski sözlüğü yeni yapıya taşı (eskisi yedeklenir)
+      let old = []; try { old = JSON.parse(localStorage.getItem(this.OLD) || '[]'); } catch {}
+      try { if (old.length && !localStorage.getItem(this.OLD + '-yedek')) localStorage.setItem(this.OLD + '-yedek', JSON.stringify(old)); } catch {}
+      this.rules = (old || []).filter(o => o && o.from).map(o => this.mk(o.from, o.to || ''));
+      this.save(); return;
     }
-    return t;
-  }
+    this.rules = r.map(x => ({ ...this.mk(), ...x })); this.bump();
+  },
+  save(){
+    this.bump();
+    try { localStorage.setItem(this.KEY, JSON.stringify(this.rules));
+          // ana sayfa (eski sözlük yapısı) da kullanabilsin: açık kuralların sade hali
+          localStorage.setItem(this.OLD, JSON.stringify(this.rules.filter(r => r.on && this.norm(r.from)).map(r => ({ from:r.from, to:r.to })))); } catch {}
+  },
+  bump(){ this.cache.clear(); this._c = null; },
+  // Karşılaştırma için sade hal: küçük harf, noktalama yok
+  norm(s){ return trLow(s).replace(/[^\p{L}\p{N}\s']/gu, ' ').replace(/\s+/g, ' ').trim(); },
+  compile(r){
+    const words = this.norm(r.from).split(' ').filter(Boolean); if (!words.length) return null;
+    const SEP = "[\\s,.;:!?…\"'’\\-]+";
+    const pat = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(SEP);
+    return { r, first: words[0], len: words.join(' ').length, re: new RegExp(`(?<![\\p{L}\\p{N}])${pat}(?![\\p{L}\\p{N}])`, 'gu') };
+  },
+  compiled(){ return this._c || (this._c = this.rules.filter(r => r.on).map(r => this.compile(r)).filter(Boolean).sort((a, b) => b.len - a.len)); },
+  // Metindeki eşleşmeler: uzun kalıp önce, çakışanlar elenir (bir kuralın sonucu başka kurala girmez)
+  find(t, spk, list){
+    const low = trLow(t), out = [];
+    if (!t || low.length !== t.length) return out;
+    for (const c of list || this.compiled()) {
+      if (c.r.spk !== 'all' && spk && c.r.spk !== spk) continue;
+      if (!low.includes(c.first)) continue;
+      c.re.lastIndex = 0; let m;
+      while ((m = c.re.exec(low))) { out.push({ s:m.index, e:m.index + m[0].length, c }); if (!m[0].length) c.re.lastIndex++; }
+    }
+    out.sort((a, b) => a.s - b.s || (b.e - b.s) - (a.e - a.s));
+    const pick = []; let end = -1;
+    for (const x of out) if (x.s >= end) { pick.push(x); end = x.e; }
+    return pick;
+  },
+  apply(t, spk){
+    if (!t || !this.rules.length) return t;
+    const key = (spk || '') + '\u0001' + t, hit = this.cache.get(key); if (hit !== undefined) return hit;
+    const pick = this.find(t, spk); let res = t;
+    if (pick.length) {
+      let o = '', k = 0;
+      for (const x of pick) {
+        let to = x.c.r.to; const src = t[x.s];
+        if (to && src && src !== src.toLocaleLowerCase('tr')) to = to[0].toLocaleUpperCase('tr') + to.slice(1);   // cümle başıysa büyük harf
+        o += t.slice(k, x.s) + to; k = x.e;
+      }
+      res = (o + t.slice(k)).replace(/\s{2,}/g, ' ').trim();
+    }
+    if (this.cache.size > 5000) this.cache.clear();
+    this.cache.set(key, res); return res;
+  },
+  // Her kural kayıtlarda kaç yerde uygulanıyor
+  usage(recs){
+    const n = new Map();
+    for (const r of recs) for (const s of r.segments || []) for (const x of this.find(s.text, s.spk)) n.set(x.c.r.id, (n.get(x.c.r.id) || 0) + 1);
+    return n;
+  },
+  countFor(rule, recs){ const c = this.compile(rule); if (!c) return 0; let n = 0;
+    for (const r of recs) for (const s of r.segments || []) n += this.find(s.text, s.spk, [c]).length; return n; },
+  spkCode(v){ v = trLow(v || '').trim(); return /^(p|personel)/.test(v) ? 'P' : /^(v|vatanda)/.test(v) ? 'V' : 'all'; },
+  splitLine(line, sep){ const out = []; let cur = '', q = false;
+    for (let i = 0; i < line.length; i++) { const ch = line[i];
+      if (q) { if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+      else if (ch === '"' && !cur.trim()) q = true; else if (ch === sep) { out.push(cur); cur = ''; } else cur += ch; }
+    out.push(cur); return out.map(x => x.trim()); },
+  // Toplu ekleme: "yanlış => doğru" satırları, Excel'den kopyalanan sütunlar (sekme) ya da CSV (;)
+  parseBulk(text){
+    const out = [];
+    for (const line of (text || '').replace(/^﻿/, '').split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const p = line.includes('=>') ? line.split('=>').map(x => x.trim()) : line.includes('\t') ? this.splitLine(line, '\t') : line.includes(';') ? this.splitLine(line, ';') : null;
+      if (!p || !p[0] || trLow(p[0]) === 'yanlış') continue;    // başlık satırını atla
+      out.push(this.mk(p[0], p[1] || '', p[2] || '', this.spkCode(p[3]), !/^(hayır|kapalı|0|false)$/i.test((p[4] || '').trim())));
+    }
+    return out;
+  },
+  merge(list){ let add = 0, upd = 0;
+    for (const x of list) { const k = this.norm(x.from); if (!k) continue;
+      const ex = this.rules.find(r => this.norm(r.from) === k && r.spk === x.spk);
+      if (ex) { Object.assign(ex, { to:x.to, grp:x.grp || ex.grp, on:x.on }); upd++; } else { this.rules.push(x); add++; } }
+    this.save(); return { add, upd }; },
+  toCsv(){ const q = (v) => /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    return '﻿' + ['Yanlış;Doğru;Grup;Kime;Açık', ...this.rules.filter(r => this.norm(r.from)).map(r =>
+      [r.from, r.to, r.grp || '', { all:'Herkes', P:'Personel', V:'Vatandaş' }[r.spk] || 'Herkes', r.on ? 'Evet' : 'Hayır'].map(q).join(';'))].join('\r\n'); }
 };
 Dict.load();
-const shown = (s) => Dict.apply(s.text);
+// Ekranda görünen metin: elle düzeltilmişse o, değilse sözlük uygulanmış hali (orijinal metin hep saklı)
+const shown = (s) => s.edit != null ? s.edit : Dict.apply(s.text, s.spk);
+
+// Elle düzeltmeden sözlük kuralı çıkar: kelime düzeyinde fark
+function learnFromEdit(before, after, spk){
+  const A = before.split(/\s+/).filter(Boolean), B = after.split(/\s+/).filter(Boolean);
+  const na = A.map(w => Dict.norm(w)), nb = B.map(w => Dict.norm(w)), n = A.length, m = B.length;
+  const L = Array.from({ length:n + 1 }, () => new Int16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = na[i] === nb[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const pairs = []; let i = 0, j = 0;                       // eşleşen kelime çiftleri (sabit noktalar)
+  while (i < n && j < m) { if (na[i] === nb[j]) { pairs.push([i, j]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++; }
+  const anchors = [[-1, -1], ...pairs, [n, m]], props = [];
+  const trimP = (s) => s.replace(/^[\s,.;:!?…"'’-]+|[\s,.;:!?…"'’-]+$/g, '');
+  for (let k = 0; k < anchors.length - 1; k++) {
+    let [a0, b0] = anchors[k], [a1, b1] = anchors[k + 1];
+    let as = a0 + 1, ae = a1, bs = b0 + 1, be = b1;          // değişen aralık [as,ae) / [bs,be)
+    if (as === ae && bs === be) continue;
+    if (Dict.norm(A.slice(as, ae).join(' ')) === Dict.norm(B.slice(bs, be).join(' '))) continue;   // sadece noktalama/harf farkı
+    // Kısa ya da boş kalıp tek başına tehlikeli: yanındaki sabit kelimeyle genişlet
+    if (as === ae) { if (a0 >= 0) { as--; bs--; } if (a1 < n) { ae++; be++; } }       // araya kelime eklenmiş: iki yanından bağlam al
+    else if (ae - as === 1 && Dict.norm(A[as]).length <= 5) { if (a1 < n) { ae++; be++; } else if (a0 >= 0) { as--; bs--; } }   // kısa tek kelime
+    const from = Dict.norm(A.slice(as, ae).join(' ')); if (!from) continue;
+    let to = trimP(B.slice(bs, be).join(' '));
+    const atStart = bs === 0 || /[.?!…]$/.test(B[bs - 1] || '');
+    if (atStart && to) to = to[0].toLocaleLowerCase('tr') + to.slice(1);
+    if (Dict.rules.some(r => Dict.norm(r.from) === from && Dict.norm(r.to) === Dict.norm(to))) continue;
+    props.push({ ...Dict.mk(from, to, '', spk || 'all'), sel: ae - as <= 6 });
+  }
+  return props;
+}
 
 /* =====================================================================
    4) KAYIT DEPOSU (IndexedDB)
@@ -967,10 +1113,14 @@ function renderTranscript(){
         <div class="row"><button class="ed-rec">🎙 Söyleyerek yazdır</button><button class="ed-play">🔊 Nasıl duyulacak?</button><span class="ed-st note"></span></div>
         <div class="row"><button class="ed-save primary">Kaydet</button><button class="ed-cancel">Vazgeç</button>${s.fix ? '<button class="ed-del">Düzeltmeyi sil</button>' : ''}</div></div>` : '';
     const who = s.spk ? `<span class="who ${s.spk}">${spkName[s.spk]}</span>` : '';
-    return '\u0000' + s.start + '\u0000' + `<div class="seg ${s.spk || ''} ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}${who}</span><span class="txt"><span class="orig">${html}</span>${fix}</span><button class="fixb" title="Doğrusunu yaz">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${editor}`;
+    const teditor = state.tEditing === i ? `<div class="teditor" data-i="${i}">
+        <div class="note">Programın yanlış duyduğu yeri düzelt (konuşmacının gerçekte söylediği). Kaydedince sözlük için öneri çıkarılır.</div>
+        <textarea spellcheck="false">${esc(txt)}</textarea>
+        <div class="row"><button class="te-save primary">Kaydet</button><button class="te-cancel">Vazgeç</button>${s.edit != null ? '<button class="te-reset">Programın metnine dön</button>' : ''}</div></div>` : '';
+    return '\u0000' + s.start + '\u0000' + `<div class="seg ${s.spk || ''} ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}${who}</span><span class="txt"><span class="orig">${html}</span>${s.edit != null ? '<span class="edmark" title="Elle düzeltildi">✎ düzeltildi</span>' : ''}${fix}</span><button class="edb" title="Metni düzelt: program yanlış duymuş (sözlüğe öğret)">✎</button><button class="fixb" title="Doğrusunu yaz: nasıl söylenmeliydi (eğitim)">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${teditor}${editor}`;
   }).filter(Boolean).map(h => { const m = h.match(/^\u0000([^\u0000]+)\u0000/); return { t:+m[1], html:h.slice(m[0].length) }; })
     .concat(dropRows).sort((a, b) => a.t - b.t).map(x => x.html).join('');
-  const ta = box.querySelector('.editor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  const ta = box.querySelector('.editor textarea, .teditor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
   markCurrentHit();
 }
@@ -1261,6 +1411,20 @@ $('list').addEventListener('focusout', (e) => { if (e.target.classList.contains(
 
 // Metin alanı
 $('transcript').onclick = (e) => {
+  const te = e.target.closest('.teditor');
+  if (te) {
+    const r = active(), seg = r.segments[+te.dataset.i];
+    if (e.target.closest('.te-save')) {
+      const before = Dict.apply(seg.text, seg.spk), after = te.querySelector('textarea').value.replace(/\s+/g, ' ').trim();
+      if (!after || after === before) delete seg.edit; else seg.edit = after;
+      state.tEditing = null; DB.put(r); renderTranscript(); runSearch(false);
+      if (seg.edit != null) openLearn(learnFromEdit(before, after, seg.spk), r, seg);
+      return;
+    }
+    if (e.target.closest('.te-reset')) { delete seg.edit; state.tEditing = null; DB.put(r); renderTranscript(); runSearch(false); return; }
+    if (e.target.closest('.te-cancel')) { state.tEditing = null; renderTranscript(); }
+    return;
+  }
   const ed = e.target.closest('.editor');
   if (ed) {
     const r = active(), seg = r.segments[+ed.dataset.i];
@@ -1276,6 +1440,7 @@ $('transcript').onclick = (e) => {
   const i = +s.dataset.i, seg = active().segments[i];
   if (e.target.closest('.say')) { $('audio').pause(); TTS.speak(shown(seg)); return; }
   if (e.target.closest('.fixb')) { if (Rec.active()) Rec.stop(); state.editing = state.editing === i ? null : i; renderTranscript(); return; }
+  if (e.target.closest('.edb')) { state.tEditing = state.tEditing === i ? null : i; renderTranscript(); return; }
   if (e.target.closest('.cmp')) { compare(seg); return; }
   resetFix(); setFollow(true); const a = $('audio'); a.currentTime = seg.start; a.play(); };
 // Kullanıcı metni kendisi kaydırırsa otomatik takibi bırak
@@ -1331,7 +1496,7 @@ $('modelSel').onchange = () => { try { localStorage.setItem('ses-metin-model', $
 $('devSel').onchange = () => { try { localStorage.setItem('ses-metin-dev', $('devSel').value); } catch {}
   $('modelStatus').textContent = 'Yeni ayar sıradaki kayıtta geçerli olacak'; };
 $('withV').onchange = () => { try { localStorage.setItem('ses-metin-withV', $('withV').checked ? '1' : ''); } catch {} };
-document.addEventListener('keydown', (e) => { if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && $('ttsPanel').hidden && $('dictPanel').hidden && $('labPanel').hidden && active()) { e.preventDefault(); $('playBtn').click(); } });
+document.addEventListener('keydown', (e) => { if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && $('ttsPanel').hidden && $('dictPanel').hidden && $('learnPanel').hidden && $('labPanel').hidden && active()) { e.preventDefault(); $('playBtn').click(); } });
 addEventListener('resize', drawWave);
 
 /* =====================================================================
@@ -1429,11 +1594,103 @@ $('labCopy').onclick = async () => { const { all, lines } = labSummary();
 $('labClear').onclick = () => { if (confirm('Biriken karşılaştırmalar silinsin mi?')) { labSave([]); renderLabSum(); } };
 
 // Sözlük
-$('dictOpen').onclick = () => { $('dictText').value = Dict.toText(); $('dictInfo').textContent = `${Dict.rules.length} kural`; $('dictPanel').hidden = false; $('dictText').focus(); };
-$('dictClose').onclick = () => { $('dictPanel').hidden = true; };
+/* ---------- Sözlük paneli ---------- */
+const DUI = { dirty:false, usage:new Map(), fresh:new Set() };
+const spkOpts = (v) => [['all','Herkes'],['P','Personel'],['V','Vatandaş']].map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${t}</option>`).join('');
+const dictGroups = () => [...new Set(Dict.rules.map(r => (r.grp || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+function dictRefreshUsage(){ DUI.usage = Dict.usage(state.recs); }
+function dictRender(){
+  const g = dictGroups(), gs = $('dictGrp'), cur = gs.value || '*';
+  gs.innerHTML = `<option value="*">Tüm gruplar</option>${g.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}<option value="-">Grupsuz</option>`;
+  gs.value = [...gs.options].some(o => o.value === cur) ? cur : '*';
+  $('dictGrps').innerHTML = g.map(x => `<option value="${esc(x)}">`).join('');
+  const q = Dict.norm($('dictQ').value), gv = gs.value;
+  const list = Dict.rules.slice().reverse().filter(r => DUI.fresh.has(r.id) || (
+    (gv === '*' || (gv === '-' ? !(r.grp || '').trim() : (r.grp || '').trim() === gv)) &&
+    (!q || Dict.norm(r.from + ' ' + r.to + ' ' + (r.grp || '')).includes(q))));
+  $('dictBody').innerHTML = list.map(r => { const u = DUI.usage.get(r.id) || 0;
+    return `<tr data-id="${r.id}" class="${r.on ? '' : 'off'}">
+      <td><input type="checkbox" class="d-on" ${r.on ? 'checked' : ''} title="Açık / kapalı"></td>
+      <td><input type="text" class="d-from" value="${esc(r.from)}" placeholder="programın yazdığı"></td>
+      <td><input type="text" class="d-to" value="${esc(r.to)}" placeholder="doğrusu (boşsa siler)"></td>
+      <td><input type="text" class="d-grp" list="dictGrps" value="${esc(r.grp || '')}" placeholder="—"></td>
+      <td><select class="d-spk">${spkOpts(r.spk)}</select></td>
+      <td class="w ${u ? 'on' : ''}">${r.on ? u : '—'}</td>
+      <td><button class="d-del" title="Kuralı sil">🗑</button></td></tr>`; }).join('')
+    || `<tr><td colspan="7" class="note" style="padding:14px">${Dict.rules.length ? 'Aramaya uyan kural yok.' : 'Henüz kural yok. ＋ Yeni kural, 📋 Toplu ekle ya da metindeki ✎ düğmesiyle ekleyebilirsin.'}</td></tr>`;
+  const on = Dict.rules.filter(r => r.on && Dict.norm(r.from)).length;
+  $('dictInfo').textContent = `${Dict.rules.length} kural · ${on} açık · ${[...DUI.usage.values()].reduce((a, b) => a + b, 0)} yerde uygulanıyor`;
+}
+function dictChanged(){ Dict.save(); DUI.dirty = true; clearTimeout(DUI.t); DUI.t = setTimeout(() => { dictRefreshUsage(); dictRender(); }, 600); }
+function dictCleanup(){ const n = Dict.rules.length; Dict.rules = Dict.rules.filter(r => Dict.norm(r.from) || (r.to || '').trim()); if (Dict.rules.length !== n) Dict.save(); }
+function afterDictChange(){ renderList(); renderTranscript(); runSearch(false); }
+$('dictOpen').onclick = () => { DUI.fresh.clear(); $('dictQ').value = ''; $('dictBulk').hidden = true; dictRefreshUsage(); dictRender(); $('dictPanel').hidden = false; $('dictQ').focus(); };
+$('dictClose').onclick = () => { $('dictPanel').hidden = true; dictCleanup(); if (DUI.dirty) { DUI.dirty = false; afterDictChange(); toast('Sözlük tüm kayıtlara uygulandı'); } };
 $('dictPanel').onclick = (e) => { if (e.target.id === 'dictPanel') $('dictClose').click(); };
-$('dictSave').onclick = () => { Dict.rules = Dict.parse($('dictText').value); Dict.save(); $('dictPanel').hidden = true;
-  toast(`Sözlük kaydedildi: ${Dict.rules.length} kural, tüm kayıtlara uygulandı`); renderList(); runSearch(false); };
+$('dictQ').oninput = () => { DUI.fresh.clear(); dictRender(); };
+$('dictGrp').onchange = () => { DUI.fresh.clear(); dictRender(); };
+$('dictAdd').onclick = () => { const r = Dict.mk(); Dict.rules.push(r); DUI.fresh.add(r.id); dictRender();
+  const inp = $('dictBody').querySelector(`tr[data-id="${r.id}"] .d-from`); inp && inp.focus(); };
+$('dictBody').addEventListener('change', (e) => {
+  const tr = e.target.closest('tr[data-id]'); if (!tr) return; const r = Dict.rules.find(x => x.id === tr.dataset.id); if (!r) return;
+  if (e.target.classList.contains('d-on')) { r.on = e.target.checked; tr.classList.toggle('off', !r.on); }
+  if (e.target.classList.contains('d-from')) r.from = e.target.value.trim();
+  if (e.target.classList.contains('d-to')) r.to = e.target.value.trim();
+  if (e.target.classList.contains('d-grp')) r.grp = e.target.value.trim();
+  if (e.target.classList.contains('d-spk')) r.spk = e.target.value;
+  dictChanged();
+});
+$('dictBody').addEventListener('click', (e) => {
+  const b = e.target.closest('.d-del'); if (!b) return; const id = b.closest('tr').dataset.id, r = Dict.rules.find(x => x.id === id);
+  if (r && Dict.norm(r.from) && !confirm(`"${r.from} → ${r.to || '(sil)'}" kuralı silinsin mi?`)) return;
+  Dict.rules = Dict.rules.filter(x => x.id !== id); dictChanged(); dictRender();
+});
+$('dictBulkBtn').onclick = () => { $('dictBulk').hidden = !$('dictBulk').hidden; if (!$('dictBulk').hidden) $('dictBulkText').focus(); };
+$('dictBulkCancel').onclick = () => { $('dictBulk').hidden = true; };
+function dictImportText(text){
+  const list = Dict.parseBulk(text); if (!list.length) { toast('Eklenecek satır bulunamadı'); return false; }
+  const { add, upd } = Dict.merge(list); DUI.dirty = true; DUI.fresh.clear(); dictRefreshUsage(); dictRender();
+  toast(`${add} kural eklendi${upd ? `, ${upd} kural güncellendi` : ''}`); return true;
+}
+$('dictBulkAdd').onclick = () => { if (dictImportText($('dictBulkText').value)) { $('dictBulkText').value = ''; $('dictBulk').hidden = true; } };
+$('dictImport').onclick = () => $('dictFile').click();
+$('dictFile').onchange = async () => { const f = $('dictFile').files[0]; if (!f) return;
+  const buf = await f.arrayBuffer(); let text = new TextDecoder('utf-8').decode(buf);
+  if (text.includes('�')) text = new TextDecoder('windows-1254').decode(buf);    // Türkçe Excel'in eski kodlaması
+  dictImportText(text); $('dictFile').value = ''; };
+$('dictExport').onclick = () => { dictCleanup();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([Dict.toCsv()], { type:'text/csv;charset=utf-8' }));
+  a.download = `sozluk-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+
+/* ---------- Düzeltmeden öğrenme ---------- */
+const LRN = { props:[], rec:null, seg:null };
+function openLearn(props, rec, seg){
+  if (!props.length) return;
+  LRN.props = props; LRN.rec = rec; LRN.seg = seg;
+  const g = dictGroups(); $('dictGrps').innerHTML = g.map(x => `<option value="${esc(x)}">`).join('');
+  $('learnBody').innerHTML = props.map((p, k) => { const n = Dict.countFor(p, state.recs);
+    return `<tr data-k="${k}"><td><input type="checkbox" class="l-sel" ${p.sel ? 'checked' : ''}></td>
+      <td><input type="text" class="l-from" value="${esc(p.from)}"></td><td><input type="text" class="l-to" value="${esc(p.to)}"></td>
+      <td><input type="text" class="l-grp" list="dictGrps" value="" placeholder="—"></td><td><select class="l-spk">${spkOpts(p.spk)}</select></td>
+      <td class="w on l-n">${Math.max(0, n - 1)}</td></tr>`; }).join('');
+  $('learnPanel').hidden = false;
+}
+$('learnBody').addEventListener('change', (e) => {
+  const tr = e.target.closest('tr[data-k]'); if (!tr || !e.target.matches('.l-from,.l-spk')) return;
+  const p = { from: tr.querySelector('.l-from').value, spk: tr.querySelector('.l-spk').value };
+  tr.querySelector('.l-n').textContent = Math.max(0, Dict.countFor(p, state.recs) - 1);
+});
+$('learnAdd').onclick = () => {
+  const list = [...$('learnBody').querySelectorAll('tr[data-k]')].filter(tr => tr.querySelector('.l-sel').checked).map(tr =>
+    Dict.mk(tr.querySelector('.l-from').value.trim(), tr.querySelector('.l-to').value.trim(), tr.querySelector('.l-grp').value.trim(), tr.querySelector('.l-spk').value));
+  $('learnPanel').hidden = true; if (!list.length) return;
+  const { add, upd } = Dict.merge(list);
+  // Düzeltilen satır artık sözlükle aynı sonucu veriyorsa elle düzeltmeye gerek kalmaz
+  const s = LRN.seg; if (s && s.edit != null && Dict.norm(Dict.apply(s.text, s.spk)) === Dict.norm(s.edit)) { delete s.edit; DB.put(LRN.rec); }
+  afterDictChange(); toast(`Sözlüğe ${add} kural eklendi${upd ? `, ${upd} güncellendi` : ''}; tüm kayıtlara uygulandı`);
+};
+$('learnSkip').onclick = $('learnClose').onclick = () => { $('learnPanel').hidden = true; };
+$('learnPanel').onclick = (e) => { if (e.target.id === 'learnPanel') $('learnPanel').hidden = true; };
 
 /* ---------- Başlangıç ---------- */
 (async () => {

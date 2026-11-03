@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ses → Metin</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161d25; --panel2:#1c2530; --line:#26313d;
+    --text:#e6edf3; --muted:#8b98a5; --accent:#3b82f6; --accent2:#60a5fa;
+    --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --hl:#1e3a5f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .sp{flex:1}
+  select,button,input{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+  button{cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent)}
+  button:disabled{opacity:.5;cursor:default}
+  .badge{font-size:12px;color:var(--muted)}
+  main{flex:1;display:flex;min-height:0}
+  /* Sol: kayıt listesi */
+  aside{width:300px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
+  .drop{margin:12px;padding:18px;border:2px dashed var(--line);border-radius:10px;text-align:center;color:var(--muted);cursor:pointer}
+  .drop.over{border-color:var(--accent);color:var(--text)}
+  .list{flex:1;overflow:auto}
+  .item{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:3px}
+  .item:hover{background:var(--panel2)}
+  .item.active{background:var(--hl)}
+  .item .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+  .item .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .st-bekliyor{color:var(--muted)} .st-isleniyor{color:var(--warn)} .st-hazir{color:var(--ok)} .st-hata{color:var(--err)}
+  .bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--warn);width:0}
+  /* Sağ: oynatıcı + metin */
+  section{flex:1;display:flex;flex-direction:column;min-width:0}
+  .player{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .ptitle{font-weight:600;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  canvas{width:100%;height:70px;display:block;cursor:pointer;background:var(--panel2);border-radius:6px}
+  .controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .time{font-variant-numeric:tabular-nums;color:var(--muted);min-width:110px}
+  .speed button.on{background:var(--accent);border-color:var(--accent)}
+  .tools{display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
+  .tools input{flex:1;min-width:160px}
+  .transcript{flex:1;overflow:auto;padding:14px 18px}
+  .seg{display:flex;gap:12px;padding:6px 8px;border-radius:6px;cursor:pointer}
+  .seg:hover{background:var(--panel2)}
+  .seg.now{background:var(--hl)}
+  .seg .t{color:var(--accent2);font-variant-numeric:tabular-nums;font-size:12px;padding-top:2px;min-width:48px}
+  .seg mark{background:var(--warn);color:#000;border-radius:2px}
+  .seg.dim{opacity:.35}
+  .empty{color:var(--muted);text-align:center;margin-top:60px}
+  .seg .txt{flex:1}
+  .seg .say,.seg .fixb{opacity:0;border:0;background:none;padding:0 4px;font-size:15px;align-self:flex-start}
+  .seg:hover .say,.seg.now .say,.seg:hover .fixb,.seg.now .fixb{opacity:.8}
+  .seg.hasfix{border-left:3px solid var(--err)}
+  .seg.hasfix .orig{text-decoration:line-through;text-decoration-color:rgba(239,68,68,.7)}
+  .fix{margin-top:4px;color:#86efac;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .fix button{padding:2px 8px;font-size:12px}
+  .editor{margin:4px 0 10px 68px;display:flex;flex-direction:column;gap:6px}
+  .editor textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--accent);border-radius:6px;padding:8px;min-height:60px}
+  button.on{background:var(--ok);border-color:var(--ok);color:#000}
+  .seg.fixing{background:rgba(34,197,94,.15)}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10}
+  .modal[hidden]{display:none}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(640px,94vw);display:flex;flex-direction:column;gap:10px}
+  .card h2{margin:0;font-size:16px}
+  .card textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:180px;resize:vertical}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row .sp{flex:1}
+  .note{font-size:12px;color:var(--muted)}
+  .spk{display:flex;flex-direction:column;gap:6px}
+  .spk .row b{min-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .spk .talking b{color:var(--warn)}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:8px 14px;border-radius:8px;display:none}
+  @media (max-width:760px){
+    main{flex-direction:column} aside{width:auto;max-height:35vh;border-right:0;border-bottom:1px solid var(--line)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Ses → Metin</h1>
+  <span class="badge" id="engineInfo"></span>
+  <span class="sp"></span>
+  <label class="badge">Model
+    <select id="modelSel">
+      <option value="onnx-community/whisper-base">Hızlı (base)</option>
+      <option value="onnx-community/whisper-small" selected>Dengeli (small)</option>
+      <option value="onnx-community/whisper-large-v3-turbo">En iyi (turbo, güçlü PC)</option>
+    </select>
+  </label>
+  <span class="badge" id="modelStatus">Model yüklenmedi</span>
+  <button id="ttsOpen">🗣 Metin → Ses</button>
+</header>
+
+<main>
+  <aside>
+    <div class="drop" id="drop">Ses dosyalarını buraya bırak<br><small>veya tıkla (mp3, wav, m4a, ogg, mp4…)</small></div>
+    <input type="file" id="fileIn" accept="audio/*,video/*" multiple hidden>
+    <div class="list" id="list"></div>
+  </aside>
+
+  <section>
+    <div class="player">
+      <div class="ptitle" id="ptitle">Kayıt seçilmedi</div>
+      <canvas id="wave"></canvas>
+      <div class="controls">
+        <button id="playBtn" disabled>▶ Oynat</button>
+        <button id="backBtn" disabled title="5 sn geri">⟲ 5</button>
+        <button id="fwdBtn" disabled title="5 sn ileri">5 ⟳</button>
+        <span class="time" id="time">00:00 / 00:00</span>
+        <span class="speed" id="speed">
+          <button data-r="1" class="on">1x</button><button data-r="1.25">1.25x</button><button data-r="1.5">1.5x</button><button data-r="2">2x</button>
+        </span>
+      </div>
+    </div>
+    <div class="tools">
+      <input id="search" placeholder="Metinde ara…" disabled>
+      <button id="fixMode" disabled title="Kaydı çalarken düzeltilen cümlelerin yerine doğrusunu seslendirir">🎓 Düzeltilmiş akış</button>
+      <button id="copyBtn" disabled>Kopyala</button>
+      <button id="txtBtn" disabled>.txt indir</button>
+      <button id="srtBtn" disabled>.srt indir</button>
+      <button id="delBtn" disabled>Sil</button>
+    </div>
+    <div class="transcript" id="transcript"><div class="empty">Soldan bir ses dosyası ekle. Metin burada, kayıtla eş zamanlı akacak.</div></div>
+  </section>
+</main>
+<audio id="audio" preload="auto"></audio>
+<div class="toast" id="toast"></div>
+
+<div class="modal" id="ttsPanel" hidden>
+  <div class="card">
+    <div class="row"><h2>🗣 Metin → Ses</h2><span class="sp"></span><button id="ttsClose">✕</button></div>
+    <textarea id="ttsText" placeholder="Seslendirilecek metni yaz ya da yapıştır… (örnek: ideal karşılama ve kapanış cümleleri, mevzuat maddesi)"></textarea>
+    <div class="note">Diyalog için her satırı konuşmacı adıyla başlat: <b>Operatör:</b> … / <b>Vatandaş:</b> … Her konuşmacıya aşağıdan ayrı ses seç.</div>
+    <div id="spkBox" class="spk"></div>
+    <div class="row">
+      <button id="ttsSample">Örnek diyalog</button>
+      <label class="badge">Hız <select id="ttsRate"><option>0.8</option><option selected>1</option><option>1.2</option><option>1.5</option></select></label>
+      <span class="sp"></span>
+      <button id="ttsFromRec" title="Seçili kaydın metnini buraya aktar">Kayıttan al</button>
+      <button id="ttsStop">⏹ Durdur</button>
+      <button id="ttsPlay" class="primary">▶ Seslendir</button>
+    </div>
+    <div class="note" id="ttsNote">İpucu: Edge tarayıcısındaki Türkçe "Natural" sesler en doğal sonucu verir.</div>
+  </div>
+</div>
+
+<script type="module">
+/* =====================================================================
+   1) MOTOR KATMANI
+   Her motor aynı arayüzü sunar:
+     load(model, onProgress)              -> modeli hazırlar
+     transcribe(float32_16k, onProgress)  -> [{start, end, text}]
+   İleride buraya "sunucu" motoru (Python / faster-whisper API) eklenebilir;
+   arayüzün geri kalanı değişmeden çalışır.
+   ===================================================================== */
+
+const WORKER_CODE = `
+// Kütüphaneyi iki farklı CDN'den dene; ikisi de olmazsa nedenini bildir
+const CDNS = ['https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js',
+              'https://unpkg.com/@huggingface/transformers@3.8.1/dist/transformers.min.js'];
+let pipeline, env, libErr = [];
+for (const u of CDNS) {
+  try { ({ pipeline, env } = await import(u)); break; }
+  catch (e) { libErr.push(new URL(u).host + ': ' + (e && e.message || e)); }
+}
+if (!pipeline) self.postMessage({ type:'fatal', message:'Kütüphane indirilemedi → ' + libErr.join(' | ') });
+else env.allowLocalModels = false;
+let asr = null, currentModel = null;
+
+self.onmessage = async (e) => {
+  const { type, id } = e.data;
+  try {
+    if (!pipeline) throw new Error('Kütüphane indirilemedi → ' + libErr.join(' | '));
+    if (type === 'load') {
+      const { model } = e.data;
+      if (asr && currentModel === model) { self.postMessage({ id, type:'loaded', device: self._device }); return; }
+      const hasGPU = !!(self.navigator && self.navigator.gpu && await self.navigator.gpu.requestAdapter().catch(()=>null));
+      const progress_callback = (p) => { if (p.status === 'progress') self.postMessage({ id, type:'dl', file:p.file, loaded:p.loaded, total:p.total }); };
+      let device = hasGPU ? 'webgpu' : 'wasm';
+      try {
+        asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback,
+          dtype: hasGPU ? { encoder_model:'fp32', decoder_model_merged:'q4' } : { encoder_model:'q8', decoder_model_merged:'q8' } });
+      } catch (gpuErr) {
+        if (device !== 'webgpu') throw gpuErr;
+        // Ekran kartı (WebGPU) ile açılamazsa işlemciyle (CPU) tekrar dene
+        self.postMessage({ id, type:'info', text:'GPU ile açılamadı, işlemciyle deneniyor…' });
+        device = 'wasm';
+        asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback,
+          dtype: { encoder_model:'q8', decoder_model_merged:'q8' } });
+      }
+      currentModel = model; self._device = device;
+      self.postMessage({ id, type:'loaded', device });
+    }
+    if (type === 'run') {
+      const out = await asr(e.data.audio, {
+        language:'turkish', task:'transcribe',
+        return_timestamps:true, chunk_length_s:30, stride_length_s:5
+      });
+      self.postMessage({ id, type:'result', chunks: out.chunks || [{ timestamp:[0,null], text: out.text }] });
+    }
+  } catch (err) {
+    self.postMessage({ id, type:'error', message: String(err && err.message || err) });
+  }
+};`;
+
+const BrowserWhisperEngine = {
+  name: 'Tarayıcı (Whisper)',
+  worker: null, seq: 0, pending: new Map(), device: null, model: null,
+
+  _ensureWorker(){
+    if (this.worker) return;
+    const url = URL.createObjectURL(new Blob([WORKER_CODE], { type:'text/javascript' }));
+    this.worker = new Worker(url, { type:'module' });
+    // Worker hiç açılamazsa (ör. kütüphane indirilemedi) bekleyen işleri hata ile bitir; sonsuza kadar beklemesin
+    const failAll = (msg) => { for (const [, p] of this.pending) p.reject(new Error(msg)); this.pending.clear(); this.worker = null; };
+    this.worker.onerror = (e) => { e.preventDefault && e.preventDefault(); failAll('Motor başlatılamadı: ' + (e.message || 'kütüphane yüklenemedi (internet / güvenlik duvarı?)')); };
+    this.worker.onmessage = (e) => {
+      if (e.data.type === 'fatal') { failAll(e.data.message); return; }
+      const p = this.pending.get(e.data.id); if (!p) return;
+      if (e.data.type === 'dl' || e.data.type === 'info') p.onProgress && p.onProgress(e.data);
+      else { this.pending.delete(e.data.id); e.data.type === 'error' ? p.reject(new Error(e.data.message)) : p.resolve(e.data); }
+    };
+  },
+  _call(msg, onProgress, transfer){
+    this._ensureWorker();
+    const id = ++this.seq;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject, onProgress });
+      this.worker.postMessage({ ...msg, id }, transfer || []);
+    });
+  },
+  async load(model, onProgress){
+    const files = {};
+    const r = await this._call({ type:'load', model }, (d) => {
+      if (d.type === 'info') { onProgress && onProgress(null, d.text); return; }
+      files[d.file] = d; let l=0, t=0;
+      for (const f of Object.values(files)) { l += f.loaded||0; t += f.total||0; }
+      onProgress && onProgress(t ? l/t : 0, null, l);
+    });
+    this.device = r.device; this.model = model;
+    return r;
+  },
+  // Uzun kayıtları sessiz noktalardan ~60 sn'lik parçalara böler: hem ilerleme gösterilir hem kelime ortadan kesilmez.
+  async transcribe(audio, onProgress){
+    const SR = 16000, pieces = splitOnSilence(audio, SR, 60, 4);
+    const segs = [];
+    for (let i = 0; i < pieces.length; i++) {
+      const [s, e] = pieces[i];
+      const part = audio.slice(s, e);
+      const r = await this._call({ type:'run', audio: part }, null, [part.buffer]);
+      const off = s / SR, dur = (e - s) / SR;
+      for (const c of r.chunks) {
+        const text = (c.text || '').trim(); if (!text) continue;
+        const a = c.timestamp?.[0] ?? 0, b = c.timestamp?.[1] ?? dur;
+        segs.push({ start: off + a, end: off + Math.min(b, dur), text });
+      }
+      onProgress && onProgress((i + 1) / pieces.length);
+    }
+    return cleanSegments(segs);
+  }
+};
+
+// Test için sahte motor (adres sonuna ?test eklenirse). Model indirmeden arayüzü dener.
+const TestEngine = {
+  name: 'Test motoru', device:'test',
+  async load(m, p){ p && p(1); return { device:'test' }; },
+  async transcribe(audio, p){
+    const dur = audio.length / 16000, segs = [];
+    for (let t = 0, i = 1; t < dur; t += 4, i++) segs.push({ start:t, end:Math.min(t+4,dur), text:`Örnek cümle ${i}: Merhaba, size nasıl yardımcı olabilirim?` });
+    p && p(1); return segs;
+  }
+};
+
+const Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
+
+/* ---------- Ses yardımcıları ---------- */
+async function decodeTo16kMono(file){
+  const buf = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+  try {
+    const ab = await ctx.decodeAudioData(buf);
+    if (ab.numberOfChannels === 1) return ab.getChannelData(0).slice();
+    const out = new Float32Array(ab.length);
+    for (let c = 0; c < ab.numberOfChannels; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) out[i] += d[i] / ab.numberOfChannels; }
+    return out;
+  } finally { ctx.close(); }
+}
+function splitOnSilence(a, SR, target, win){
+  const pieces = []; let start = 0;
+  const frame = Math.floor(SR * 0.1);
+  while (a.length - start > (target + win) * SR) {
+    const c = start + target * SR, lo = c - win * SR, hi = c + win * SR;
+    let best = c, bestE = Infinity;
+    for (let f = lo; f + frame < hi; f += frame) {
+      let e = 0; for (let i = f; i < f + frame; i++) e += a[i] * a[i];
+      if (e < bestE) { bestE = e; best = f + (frame >> 1); }
+    }
+    pieces.push([start, best]); start = best;
+  }
+  pieces.push([start, a.length]);
+  return pieces;
+}
+function cleanSegments(segs){
+  // Whisper'ın sessizlikte aynı cümleyi tekrar etmesini (halüsinasyon) ayıkla
+  const out = [];
+  for (const s of segs) { const p = out[out.length-1]; if (p && p.text === s.text) { p.end = s.end; continue; } out.push(s); }
+  return out;
+}
+function peaks(a, n=1200){
+  const step = Math.max(1, Math.floor(a.length / n)), out = [];
+  for (let i = 0; i < a.length; i += step) { let m = 0; for (let j = i; j < Math.min(i+step, a.length); j++) { const v = Math.abs(a[j]); if (v > m) m = v; } out.push(m); }
+  return out;
+}
+
+/* =====================================================================
+   2) KAYIT DEPOSU (IndexedDB) — sayfa yenilense de kayıtlar ve metinler kalır
+   ===================================================================== */
+const DB = {
+  db: null,
+  async open(){
+    if (this.db) return this.db;
+    this.db = await new Promise((res, rej) => {
+      const r = indexedDB.open('ses-metin', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kayitlar', { keyPath:'id' });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    return this.db;
+  },
+  async tx(mode, fn){
+    const db = await this.open();
+    return new Promise((res, rej) => { const t = db.transaction('kayitlar', mode); const r = fn(t.objectStore('kayitlar')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); });
+  },
+  put(rec){ return this.tx('readwrite', s => s.put(rec)).catch(()=>{}); },
+  del(id){ return this.tx('readwrite', s => s.delete(id)).catch(()=>{}); },
+  all(){ return this.tx('readonly', s => s.getAll()).catch(() => []); }
+};
+
+/* =====================================================================
+   3) UYGULAMA DURUMU + İŞ KUYRUĞU
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+const state = { recs: [], activeId: null, queueRunning: false, loadedModel: null, rate: 1 };
+
+function newRec(file){
+  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), name: file.name, blob: file,
+           added: Date.now(), status:'bekliyor', progress:0, duration:0, peaks:null, segments:[], error:null };
+}
+async function addFiles(files){
+  for (const f of files) {
+    if (!/^(audio|video)\//.test(f.type) && !/\.(mp3|wav|m4a|ogg|opus|webm|mp4|aac|flac|wma|amr)$/i.test(f.name)) continue;
+    const r = newRec(f); state.recs.unshift(r); DB.put(r);
+    if (!state.activeId) select(r.id);
+  }
+  renderList(); runQueue();
+}
+
+async function ensureModel(){
+  const m = $('modelSel').value;
+  if (state.loadedModel === m) return;
+  const st = $('modelStatus'); let last = Date.now();
+  st.textContent = 'Motor başlatılıyor…';
+  // 45 sn hiç ilerleme olmazsa kullanıcıyı bilgilendir
+  const watch = setInterval(() => { if (Date.now() - last > 45000) st.textContent = 'Bekleniyor… (internet yavaş olabilir; F12 > Console\'da hata var mı bak)'; }, 5000);
+  try {
+    await Engine.load(m, (p, info, bytes) => { last = Date.now();
+      st.textContent = info ? info : `Model indiriliyor… %${Math.round(p*100)}` + (bytes ? ` (${(bytes/1048576).toFixed(0)} MB)` : ''); });
+  } finally { clearInterval(watch); }
+  state.loadedModel = m;
+  $('modelStatus').textContent = `Hazır · ${m.split('/')[1]}`;
+  $('engineInfo').textContent = `${Engine.name} · ${Engine.device === 'webgpu' ? 'GPU' : Engine.device === 'wasm' ? 'CPU' : Engine.device}`;
+}
+
+async function runQueue(){
+  if (state.queueRunning) return; state.queueRunning = true;
+  try {
+    let r;
+    while ((r = state.recs.find(x => x.status === 'bekliyor'))) {
+      r.status = 'isleniyor'; r.progress = 0; renderList();
+      try {
+        const audio = await decodeTo16kMono(r.blob);
+        r.duration = audio.length / 16000; r.peaks = peaks(audio);
+        if (r.id === state.activeId) drawWave();
+        renderList();
+        await ensureModel();
+        const t0 = performance.now();
+        r.segments = await Engine.transcribe(audio, (p) => { r.progress = p; renderList(); });
+        r.status = 'hazir'; r.model = state.loadedModel; r.took = (performance.now() - t0) / 1000;
+      } catch (err) {
+        console.error(err); r.status = 'hata'; r.error = err.message;
+        if (!state.loadedModel) $('modelStatus').textContent = 'Model yüklenemedi: ' + err.message;
+      }
+      DB.put(r); renderList();
+      if (r.id === state.activeId) renderTranscript();
+    }
+  } finally { state.queueRunning = false; }
+}
+
+/* =====================================================================
+   4) ARAYÜZ
+   ===================================================================== */
+const fmt = (s) => { s = Math.max(0, s||0); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = Math.floor(s%60);
+  return (h ? h + ':' + String(m).padStart(2,'0') : String(m).padStart(2,'0')) + ':' + String(x).padStart(2,'0'); };
+const esc = (t) => t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const active = () => state.recs.find(r => r.id === state.activeId);
+const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', 1800); };
+
+function renderList(){
+  const st = { bekliyor:'Sırada', isleniyor:'İşleniyor', hazir:'Hazır', hata:'Hata' };
+  $('list').innerHTML = state.recs.map(r => `
+    <div class="item ${r.id === state.activeId ? 'active' : ''}" data-id="${r.id}">
+      <div class="name" title="${esc(r.name)}">${esc(r.name)}</div>
+      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}</span><span>${r.duration ? fmt(r.duration) : ''}</span></div>
+      ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}
+    </div>`).join('');
+}
+
+function select(id){
+  state.activeId = id; state.editing = null; resetFix(); const r = active(); const a = $('audio');
+  if (a._url) URL.revokeObjectURL(a._url);
+  a._url = URL.createObjectURL(r.blob); a.src = a._url; a.playbackRate = state.rate;
+  $('ptitle').textContent = r.name;
+  ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = false);
+  renderList(); renderTranscript(); drawWave();
+}
+
+function renderTranscript(){
+  const r = active(), box = $('transcript'), ready = r && r.status === 'hazir';
+  ['search','copyBtn','txtBtn','srtBtn','fixMode'].forEach(b => $(b).disabled = !ready);
+  if (!r) { box.innerHTML = '<div class="empty">Kayıt seçilmedi.</div>'; return; }
+  if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; return; }
+  if (!r.segments.length) { box.innerHTML = '<div class="empty">Konuşma bulunamadı.</div>'; return; }
+  const q = $('search').value.trim().toLocaleLowerCase('tr');
+  box.innerHTML = r.segments.map((s, i) => {
+    let html = esc(s.text), hit = true;
+    if (q) { const low = s.text.toLocaleLowerCase('tr'); hit = low.includes(q);
+      if (hit) { let o = '', k = 0, j; while ((j = low.indexOf(q, k)) >= 0) { o += esc(s.text.slice(k, j)) + '<mark>' + esc(s.text.slice(j, j + q.length)) + '</mark>'; k = j + q.length; } html = o + esc(s.text.slice(k)); } }
+    const fix = s.fix ? `<div class="fix">✔ ${esc(s.fix)} <button class="cmp" title="Önce söyleneni, sonra doğrusunu çal">▶ Karşılaştır</button></div>` : '';
+    const editor = state.editing === i ? `<div class="editor" data-i="${i}">
+        <textarea placeholder="Doğrusu nasıl söylenmeliydi?">${esc(s.fix || '')}</textarea>
+        <div class="row"><button class="ed-rec">🎙 Söyleyerek yazdır</button><button class="ed-play">🔊 Nasıl duyulacak?</button><span class="ed-st note"></span></div>
+        <div class="row"><button class="ed-save primary">Kaydet</button><button class="ed-cancel">Vazgeç</button>${s.fix ? '<button class="ed-del">Düzeltmeyi sil</button>' : ''}</div></div>` : '';
+    return `<div class="seg ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}</span><span class="txt"><span class="orig">${html}</span>${fix}</span><button class="fixb" title="Doğrusunu yaz">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${editor}`;
+  }).join('');
+  const ta = box.querySelector('.editor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  syncHighlight(true);
+}
+
+let lastNow = -1;
+function syncHighlight(force){
+  const r = active(); if (!r || r.status !== 'hazir') return;
+  const t = $('audio').currentTime;
+  let idx = -1; for (let i = 0; i < r.segments.length; i++) { if (r.segments[i].start <= t + 0.05) idx = i; else break; }
+  if (idx === lastNow && !force) return;
+  lastNow = idx;
+  document.querySelectorAll('.seg.now').forEach(e => e.classList.remove('now'));
+  const el = document.querySelector(`.seg[data-i="${idx}"]`);
+  if (el) { el.classList.add('now'); if (!$('audio').paused) el.scrollIntoView({ block:'center', behavior:'smooth' }); }
+}
+
+function drawWave(){
+  const c = $('wave'), r = active(), dpr = devicePixelRatio || 1;
+  c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+  const g = c.getContext('2d'); g.clearRect(0,0,c.width,c.height);
+  if (!r || !r.peaks) return;
+  const a = $('audio'), dur = a.duration || r.duration || 1, pos = (a.currentTime || 0) / dur;
+  const n = r.peaks.length, w = c.width / n, mid = c.height/2, max = Math.max(...r.peaks) || 1;
+  for (let i = 0; i < n; i++) {
+    const h = Math.max(1, r.peaks[i] / max * mid * 0.95);
+    g.fillStyle = (i / n) < pos ? '#60a5fa' : '#3a4654';
+    g.fillRect(i * w, mid - h, Math.max(1, w - 0.3), h * 2);
+  }
+}
+
+/* =====================================================================
+   5) METİN → SES (tarayıcının yerleşik sesleri; ücretsiz, indirme yok)
+   İleride Piper (yerel) veya bulut ses motoru aynı speak() arayüzüyle takılabilir.
+   ===================================================================== */
+const DEFAULT_SPK = 'Anlatıcı';
+const TTS = {
+  ok: 'speechSynthesis' in window, voices: [], map: {},   // map: konuşmacı -> { voice, pitch }
+  init(){
+    if (!this.ok) { $('ttsNote').textContent = 'Bu tarayıcı seslendirmeyi desteklemiyor.'; $('ttsPlay').disabled = true; return; }
+    const load = () => {
+      const all = speechSynthesis.getVoices();
+      const tr = all.filter(v => /^tr/i.test(v.lang));
+      tr.sort((a, b) => (/natural|online/i.test(b.name) - /natural|online/i.test(a.name)));
+      this.voices = tr.length ? tr : all;
+      if (all.length && !tr.length) $('ttsNote').textContent = 'Bu bilgisayarda Türkçe ses bulunamadı; Edge tarayıcısını deneyebilir ya da Windows ayarlarından Türkçe konuşma paketi ekleyebilirsin.';
+      this.map = {}; renderSpeakers();
+    };
+    load(); speechSynthesis.onvoiceschanged = load;
+  },
+  // "Ad: metin" satırlarını konuşmacılara ayırır; adsız satır önceki konuşmacıya devam eder
+  parse(text){
+    const lines = [], spks = [];
+    let cur = DEFAULT_SPK;
+    for (const raw of text.split('\n')) {
+      const m = raw.match(/^\s*([^:\n]{1,24}?)\s*:(?:\s+|$)(.*)$/);
+      let line = raw.trim();
+      if (m && !/^\d/.test(m[1])) { cur = m[1].trim(); line = m[2].trim(); }
+      if (!line) continue;
+      if (!spks.includes(cur)) spks.push(cur);
+      lines.push({ spk: cur, text: line });
+    }
+    return { lines, spks };
+  },
+  // Yeni konuşmacıya otomatik ses: farklı ses varsa farklısını, yoksa aynı sesi farklı tonda
+  assign(spk, idx){
+    if (this.map[spk]) return this.map[spk];
+    const n = this.voices.length || 1;
+    const voice = idx % n, pitch = n > 1 ? 1 : [1, 0.7, 1.35, 0.85, 1.2][idx % 5];
+    return (this.map[spk] = { voice, pitch });
+  },
+  gen: 0,
+  _utter(text, cfg, onstart){
+    const v = this.voices[cfg.voice];
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = v ? v.lang : 'tr-TR'; if (v) u.voice = v;
+    u.rate = +$('ttsRate').value; u.pitch = cfg.pitch;
+    if (onstart) u.onstart = onstart;
+    speechSynthesis.speak(u);
+    return u;
+  },
+  // Uzun metinler bazı tarayıcılarda yarıda kesildiği için cümle cümle kuyruğa alınır
+  _sentences: (t) => (t.match(/[^.!?…]+[.!?…]*/g) || []).map(s => s.trim()).filter(Boolean),
+  speak(text, onDone){               // tek ses (🔊 düğmeleri, düzeltmeler); bitince onDone çağrılır
+    if (!this.ok || !text.trim()) { onDone && onDone(); return; }
+    speechSynthesis.cancel();
+    const g = ++this.gen; let last;
+    for (const s of this._sentences(text)) last = this._utter(s, { voice:0, pitch:1 });
+    if (last && onDone) last.onend = () => { if (g === this.gen) onDone(); };
+  },
+  speakScript(text){                 // diyalog
+    if (!this.ok) return;
+    speechSynthesis.cancel();
+    const { lines, spks } = this.parse(text);
+    spks.forEach((s, i) => this.assign(s, i));
+    for (const l of lines) this._sentences(l.text).forEach((s, k) =>
+      this._utter(s, this.map[l.spk], k ? null : () => markTalking(l.spk)));
+    const end = new SpeechSynthesisUtterance(''); end.onend = end.onerror = () => markTalking(null);
+    speechSynthesis.speak(end);
+  },
+  stop(){ this.gen++; if (this.ok) { speechSynthesis.cancel(); markTalking(null); } }
+};
+
+function renderSpeakers(){
+  const { spks } = TTS.parse($('ttsText').value || '');
+  const list = spks.length ? spks : [DEFAULT_SPK];
+  const opts = TTS.voices.map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join('');
+  $('spkBox').innerHTML = list.map((s, i) => {
+    const c = TTS.assign(s, i);
+    return `<div class="row" data-spk="${esc(s)}"><b title="${esc(s)}">${esc(s)}</b>
+      <select data-k="voice">${opts}</select>
+      <label class="badge">Ton <select data-k="pitch">${[0.6,0.7,0.85,1,1.2,1.35,1.5].map(p => `<option ${p===c.pitch?'selected':''}>${p}</option>`).join('')}</select></label>
+      <button data-k="test" title="Bu sesi dene">🔈</button></div>`;
+  }).join('');
+  $('spkBox').querySelectorAll('.row').forEach(r => { const c = TTS.map[r.dataset.spk]; r.querySelector('[data-k=voice]').value = c.voice; });
+}
+function markTalking(spk){
+  $('spkBox').querySelectorAll('.row').forEach(r => r.classList.toggle('talking', r.dataset.spk === spk));
+}
+$('spkBox').onchange = (e) => { const r = e.target.closest('.row'); const c = TTS.map[r.dataset.spk]; c[e.target.dataset.k] = +e.target.value; };
+$('spkBox').onclick = (e) => { if (e.target.dataset.k !== 'test') return; const r = e.target.closest('.row');
+  speechSynthesis.cancel(); TTS._utter(`Merhaba, ben ${r.dataset.spk}.`, TTS.map[r.dataset.spk]); };
+let spkT; $('ttsText').oninput = () => { clearTimeout(spkT); spkT = setTimeout(renderSpeakers, 300); };
+$('ttsSample').onclick = () => {
+  $('ttsText').value = `Operatör: ALO 144, buyurun, size nasıl yardımcı olabilirim?
+Vatandaş: Merhaba, yaşlı annem için evde bakım desteğine başvurmak istiyorum.
+Operatör: Tabii, yardımcı olayım. Öncelikle annenizin şu an kiminle yaşadığını öğrenebilir miyim?
+Vatandaş: Benimle yaşıyor, yatağa bağlı.
+Operatör: Anladım. Başvurunuzu ilçe müdürlüğüne iletebilirim. Başka yardımcı olabileceğim bir konu var mı?
+Vatandaş: Hayır, çok teşekkür ederim.
+Operatör: Rica ederim, iyi günler dilerim.`;
+  renderSpeakers();
+};
+TTS.init();
+$('ttsOpen').onclick = () => { $('ttsPanel').hidden = false; $('ttsText').focus(); };
+$('ttsClose').onclick = () => { TTS.stop(); $('ttsPanel').hidden = true; };
+$('ttsPanel').onclick = (e) => { if (e.target.id === 'ttsPanel') $('ttsClose').click(); };
+$('ttsPlay').onclick = () => { $('audio').pause(); TTS.speakScript($('ttsText').value); };
+$('ttsStop').onclick = () => TTS.stop();
+$('ttsFromRec').onclick = () => { const r = active(); if (r && r.status === 'hazir') { $('ttsText').value = plainText(r, false); renderSpeakers(); } else toast('Önce metne çevrilmiş bir kayıt seç'); };
+
+/* =====================================================================
+   6) DÜZELTME / EĞİTİM MODU
+   - Karşılaştır: önce kayıttaki cümle, ardından doğrusu (sentetik sesle)
+   - Düzeltilmiş akış: kayıt çalarken düzeltilen cümlenin yerine doğrusu seslendirilir, sonra kayıt devam eder
+   ===================================================================== */
+const fx = { mode:false, played:new Set(), inFix:false, stopAt:null, afterStop:null, comparing:false, player:null };
+
+/* Mikrofonla sesli düzeltme: kayıt alınır, saklanır ve aynı motorla yazıya çevrilir */
+const Rec = {
+  mr:null, stream:null, chunks:[],
+  active(){ return this.mr && this.mr.state === 'recording'; },
+  async start(){
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    this.chunks = []; this.mr = new MediaRecorder(this.stream);
+    this.mr.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
+    this.mr.start();
+  },
+  stop(){
+    return new Promise((res) => {
+      const mr = this.mr;
+      mr.onstop = () => { this.stream.getTracks().forEach(t => t.stop()); res(new Blob(this.chunks, { type: mr.mimeType || 'audio/webm' })); };
+      mr.stop();
+    });
+  }
+};
+async function recToggle(ed){
+  const btn = ed.querySelector('.ed-rec'), st = ed.querySelector('.ed-st');
+  if (!Rec.active()) {
+    try { await Rec.start(); } catch { toast('Mikrofona erişilemedi (tarayıcı izni gerekli)'); return; }
+    $('audio').pause(); stopFixAudio();
+    btn.textContent = '⏹ Bitir'; btn.classList.add('on'); st.textContent = 'Dinliyorum… doğru cümleyi söyle, bitince "Bitir"e bas';
+    return;
+  }
+  const blob = await Rec.stop();               // ses sadece yazıya çevirmek için kullanılır, saklanmaz
+  btn.textContent = '🎙 Yeniden söyle'; btn.classList.remove('on');
+  st.textContent = 'Yazıya çevriliyor…';
+  try {
+    await ensureModel();
+    const segs = await Engine.transcribe(await decodeTo16kMono(blob));
+    const text = segs.map(s => s.text).join(' ').trim();
+    if (text) ed.querySelector('textarea').value = text;
+    st.textContent = text ? 'Hazır. Gerekirse metni düzelt, sonra Kaydet.' : 'Anlaşılamadı; tekrar söyle ya da elle yaz.';
+  } catch (err) { st.textContent = 'Yazıya çevrilemedi; tekrar dene ya da elle yaz.'; }
+}
+function stopFixAudio(){ if (fx.player) { const p = fx.player; fx.player = null; p.pause(); } }
+// Düzeltme her zaman sentetik sesle okunur
+function playFix(seg, onDone){ TTS.speak(seg.fix, onDone); }
+const markFixing = (seg) => { document.querySelectorAll('.seg.fixing').forEach(e => e.classList.remove('fixing'));
+  if (seg) { const i = active().segments.indexOf(seg); const el = document.querySelector(`.seg[data-i="${i}"]`); el && el.classList.add('fixing'); } };
+function resetFix(){ fx.played.clear(); fx.stopAt = null; fx.afterStop = null; fx.comparing = false; stopFixAudio(); if (fx.inFix) { fx.inFix = false; TTS.stop(); } markFixing(null); }
+
+function compare(seg){
+  const a = $('audio'); resetFix();
+  fx.comparing = true; fx.stopAt = seg.end;
+  fx.afterStop = () => { fx.comparing = false; fx.inFix = true; markFixing(seg);
+    playFix(seg, () => { fx.inFix = false; markFixing(null); }); };
+  a.currentTime = seg.start; a.play();
+}
+function fixTick(t){
+  const a = $('audio');
+  if (fx.stopAt != null && t >= fx.stopAt) { a.pause(); const cb = fx.afterStop; fx.stopAt = null; fx.afterStop = null; cb && cb(); return; }
+  if (!fx.mode || fx.inFix || fx.comparing || a.paused) return;
+  const segs = active().segments;
+  const i = segs.findIndex((s, k) => s.fix && !fx.played.has(k) && t >= s.start - 0.05 && t < s.end);
+  if (i < 0) return;
+  const s = segs[i]; fx.played.add(i); fx.inFix = true;
+  a.pause(); markFixing(s);
+  playFix(s, () => { fx.inFix = false; markFixing(null); a.currentTime = s.end; a.play(); });
+}
+$('fixMode').onclick = () => { fx.mode = !fx.mode; $('fixMode').classList.toggle('on', fx.mode); resetFix();
+  toast(fx.mode ? 'Düzeltilmiş akış açık: düzeltilen cümlelerde doğrusu çalınacak' : 'Düzeltilmiş akış kapalı'); };
+
+/* ---------- Dışa aktarım ---------- */
+const plainText = (r, withTime) => r.segments.map(s =>
+  (withTime ? `[${fmt(s.start)}] ` : '') + s.text + (withTime && s.fix ? `\n        → Doğrusu: ${s.fix}` : '')).join('\n');
+const srtTime = (s) => { const ms = Math.round(s*1000); const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000), x = Math.floor(ms%60000/1000), z = ms%1000;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')},${String(z).padStart(3,'0')}`; };
+const toSrt = (r) => r.segments.map((s, i) => `${i+1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${s.text}\n`).join('\n');
+function download(name, text){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type:'text/plain;charset=utf-8' }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const baseName = (r) => r.name.replace(/\.[^.]+$/, '');
+
+/* ---------- Olaylar ---------- */
+const drop = $('drop');
+drop.onclick = () => $('fileIn').click();
+$('fileIn').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+document.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
+
+$('list').onclick = (e) => { const it = e.target.closest('.item'); if (it) select(it.dataset.id); };
+$('transcript').onclick = (e) => {
+  const ed = e.target.closest('.editor');
+  if (ed) {
+    const r = active(), seg = r.segments[+ed.dataset.i];
+    if (e.target.closest('.ed-rec')) { recToggle(ed); return; }
+    if (e.target.closest('.ed-play')) { $('audio').pause(); TTS.speak(ed.querySelector('textarea').value); return; }
+    if (e.target.closest('.ed-save')) {
+      const text = ed.querySelector('textarea').value.trim();
+      if (text) seg.fix = text; else delete seg.fix;
+    }
+    else if (e.target.closest('.ed-del')) { delete seg.fix; }
+    else if (!e.target.closest('.ed-cancel')) return;
+    if (Rec.active()) Rec.stop();
+    state.editing = null; DB.put(r); renderTranscript(); return;
+  }
+  const s = e.target.closest('.seg'); if (!s) return;
+  const i = +s.dataset.i, seg = active().segments[i];
+  if (e.target.closest('.say')) { $('audio').pause(); TTS.speak(seg.text); return; }
+  if (e.target.closest('.fixb')) { if (Rec.active()) Rec.stop();
+    state.editing = state.editing === i ? null : i; renderTranscript(); return; }
+  if (e.target.closest('.cmp')) { compare(seg); return; }
+  resetFix(); const a = $('audio'); a.currentTime = active().segments[+s.dataset.i].start; a.play(); };
+
+const audio = $('audio');
+$('playBtn').onclick = () => {
+  if (fx.inFix || fx.stopAt != null) { const keep = new Set(fx.played); resetFix(); fx.played = keep; }
+  audio.paused ? audio.play() : audio.pause(); };
+audio.addEventListener('seeked', () => { for (const k of [...fx.played]) if (active() && active().segments[k].start >= audio.currentTime - 0.1) fx.played.delete(k); });
+$('backBtn').onclick = () => audio.currentTime = Math.max(0, audio.currentTime - 5);
+$('fwdBtn').onclick = () => audio.currentTime += 5;
+audio.onplay = () => $('playBtn').textContent = '⏸ Durdur';
+audio.onpause = () => $('playBtn').textContent = '▶ Oynat';
+audio.ontimeupdate = () => { $('time').textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`; syncHighlight(); drawWave(); if (active()) fixTick(audio.currentTime); };
+audio.onloadedmetadata = () => { $('time').textContent = `00:00 / ${fmt(audio.duration)}`; drawWave(); };
+$('wave').onclick = (e) => { if (!audio.duration) return; const b = e.target.getBoundingClientRect(); audio.currentTime = (e.clientX - b.left) / b.width * audio.duration; };
+$('speed').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; state.rate = +b.dataset.r; audio.playbackRate = state.rate;
+  $('speed').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+$('search').oninput = () => renderTranscript();
+$('copyBtn').onclick = async () => { try { await navigator.clipboard.writeText(plainText(active(), true)); toast('Kopyalandı'); } catch { toast('Kopyalanamadı'); } };
+$('txtBtn').onclick = () => download(baseName(active()) + '.txt', plainText(active(), true));
+$('srtBtn').onclick = () => download(baseName(active()) + '.srt', toSrt(active()));
+$('delBtn').onclick = () => { const r = active(); if (!r) return; DB.del(r.id); state.recs = state.recs.filter(x => x !== r);
+  audio.pause(); audio.removeAttribute('src'); state.activeId = null; $('ptitle').textContent = 'Kayıt seçilmedi';
+  ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = true);
+  if (state.recs[0]) select(state.recs[0].id); else { renderList(); renderTranscript(); drawWave(); } };
+$('modelSel').onchange = () => { $('modelStatus').textContent = 'Yeni model ilk kayıtta yüklenecek'; };
+document.addEventListener('keydown', (e) => { if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && $('ttsPanel').hidden && active()) { e.preventDefault(); $('playBtn').click(); } });
+addEventListener('resize', drawWave);
+
+/* ---------- Başlangıç: kayıtlı kayıtları geri yükle ---------- */
+(async () => {
+  const saved = (await DB.all()).sort((a,b) => b.added - a.added);
+  for (const r of saved) if (r.status === 'isleniyor') r.status = 'bekliyor'; // yarıda kalanlar tekrar sıraya
+  state.recs = saved; renderList();
+  if (saved[0]) select(saved[0].id);
+  runQueue();
+})();
+</script>
+</body>
+</html>

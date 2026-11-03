@@ -859,7 +859,8 @@ function levRatio(a, b){
   return 1 - p[n] / Math.max(m, n);
 }
 // Aynı kelime ya da aynı kök + farklı ek (maaşı / maaşımı): hata sayılmaz
-const same = (a, b) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+const same = (a, b) => { if (a === b) return true; const m = Math.min(a.length, b.length); if (m < 4) return false;
+  let k = 0; while (k < m && a[k] === b[k]) k++; return k === m || k >= Math.max(4, Math.ceil(m * 0.75)); };   // olabilirim / olabiliriz
 const subseq = (need, hay) => { let j = 0; for (const w of hay) if (j < need.length && same(w, need[j])) j++; return j === need.length; };
 const Kalip = {
   KEY:'ses-metin-kaliplar', list:[], level:'orta', cache:new Map(), _p:null,
@@ -892,6 +893,10 @@ const Kalip = {
           const flat = ws.join(''); if (Math.abs(flat.length - p.flat.length) > (1 - need) * Math.max(flat.length, p.flat.length)) continue;   // uzunluk farkı zaten eşiği aşıyor
           const win = ws.join(' '); if (p.ign.has(win)) continue;
           const sc = levRatio(flat, p.flat);
+          if (sc >= need) {   // sadece farklı kalan kısımlar birbirine benzemeli (aynı kelimeler puanı şişirmesin)
+            const lw = ws.filter(w => !p.words.some(pw => same(w, pw))).join(''), lp = p.words.filter(pw => !ws.some(w => same(w, pw))).join('');
+            if (lw && lp && levRatio(lw, lp) < 0.2) continue;
+          }
           if (sc >= need && (!best || sc > best.score + 1e-9)) best = { s:toks[i].s, e:toks[i + n - 1].e, k:p.k, score:sc, win };
         }
       }

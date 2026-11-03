@@ -329,6 +329,7 @@ const TestEngine = {
   }
 };
 const Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
+if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput }; });
 
 /* =====================================================================
    2) SES İŞLEME: kanal ayırma, konuşma bulma (VAD), normalize, parçalama
@@ -383,12 +384,76 @@ function echoMask(r, o){
   }
   return mask;
 }
+// Yankının gecikmesini bul (tüm kayıt boyunca, çerçeve düzeyinde): mic kanalı ref kanalını kaç çerçeve geriden izliyor?
+function echoDelayFrames(rMic, rRef){
+  let best = -1, bestLag = 0; const n = rMic.length - 30;
+  for (let lag = 0; lag <= 25; lag++) { const c = pearson(rMic, 25 + lag, rRef, 25, n - 25 - lag); if (c > best) { best = c; bestLag = lag; } }
+  return { lag: bestLag, corr: best };
+}
+// Uyarlamalı yankı silme (telefon sistemlerinin yöntemi, NLMS): ref kanalının (temiz ses) yankısını mic kanalından ÇIKARIR.
+// Sadece "yalnız yankı" çerçevelerinde öğrenir; böylece yankının üstüne binen gerçek konuşma korunur.
+async function cancelEcho(mic, ref, adaptMask, lagFrames){
+  const L = 1024, pre = 160, start = Math.max(0, lagFrames * FRAME - pre);
+  // Referans (kaynak) gerçekten konuşurken öğren; sessizken öğrenmek filtreyi bozar
+  const rr = frameRms(ref), refThr = Math.max(pct(rr, 0.2) * 4, pct(rr, 0.995) * 0.08, 0.004);
+  const lagS = lagFrames * FRAME;
+  const w = new Float32Array(L), out = new Float32Array(mic.length);
+  let pw = 0;
+  for (let n = 0; n < mic.length; n++) {
+    const base = n - start;
+    const xn = base >= 0 && base < ref.length ? ref[base] : 0, xo = base - L >= 0 ? ref[base - L] : 0;
+    pw += xn*xn - xo*xo; if (pw < 0) pw = 0;
+    let y = 0;
+    if (base >= 0) { const kmax = Math.min(L, base + 1); for (let k = 0; k < kmax; k++) y += w[k] * ref[base - k]; }
+    const e = mic[n] - y; out[n] = e;
+    const fr = Math.floor((n - lagS) / FRAME);
+    if (adaptMask[Math.floor(n / FRAME)] && base >= 0 && fr >= 0 && rr[fr] > refThr) {
+      const g = 0.3 * e / (pw + L * refThr * refThr); const kmax = Math.min(L, base + 1);
+      for (let k = 0; k < kmax; k++) w[k] += g * ref[base - k];
+    }
+    if ((n & 32767) === 0) await new Promise(r => setTimeout(r, 0));   // arayüz donmasın
+  }
+  // Güvenlik: yankılı bölgelerde enerji azalmadıysa (filtre işe yaramadıysa) orijinali kullan
+  let eIn = 0, eOut = 0;
+  for (let f = 0; f < adaptMask.length; f++) if (adaptMask[f]) for (let i = f*FRAME; i < Math.min(mic.length, (f+1)*FRAME); i++) { eIn += mic[i]*mic[i]; eOut += out[i]*out[i]; }
+  return eOut < eIn * 0.7 ? out : mic;
+}
+// Stereo kayıtta iki yöndeki yankıyı da temizle
+async function cleanStereo(L, R){
+  const rL = frameRms(L), rR = frameRms(R), res = { L, R, info:{} };
+  for (const [key, mic, ref, rm, rf] of [['V', R, L, rR, rL], ['P', L, R, rL, rR]]) {
+    const d = echoDelayFrames(rm, rf), mask = echoMask(rm, rf);
+    let cnt = 0; for (const m of mask) cnt += m;
+    if (d.corr < 0.3 || cnt < 30) { res.info[key] = 'yok'; continue; }      // belirgin yankı yoksa dokunma
+    // Kırpılmış (aşırı yüksek) yankı doğrusal değildir; silme güvenilmez → eski yönteme (yankıyı yok sayma) bırak
+    let clip = 0, tot = 0;
+    for (let f = 0; f < mask.length; f++) if (mask[f]) for (let i = f*FRAME; i < Math.min(mic.length, (f+1)*FRAME); i++) { tot++; if (Math.abs(mic[i]) > 0.97) clip++; }
+    if (tot && clip / tot > 0.002) { res.info[key] = 'kırpılma var, atlandı'; continue; }
+    const cleaned = await cancelEcho(mic, ref, mask, d.lag);
+    res[key === 'V' ? 'R' : 'L'] = cleaned; res.info[key] = cleaned === mic ? 'denendi' : `temizlendi (${Math.round(d.lag * FRAME / SR * 1000)} ms)`;
+  }
+  return res;
+}
 // Konuşma bölgeleri (yankı ve çok kısık sızıntı hariç)
-function vad(ch, other){
+// orig: yankı silmeden önceki kanallar {self, other}. Yankının yeri orijinalden, kalan artık temizlenmişten ölçülür.
+function vad(ch, other, orig){
   const r = frameRms(ch), o = other ? frameRms(other) : null, fs = FRAME / SR;
-  const thr = Math.max(pct(r, 0.2) * 3, pct(r, 0.995) * 0.04, 0.002);
-  const echo = o ? echoMask(r, o) : null;
-  const sp = r.map((v, i) => (v > thr && (!o || (!echo[i] && v > o[i] * 0.12))) ? 1 : 0);
+  let thr = Math.max(pct(r, 0.2) * 3, pct(r, 0.995) * 0.04, 0.002);
+  let echo = null, raw = null, k = 0, echoC = null;
+  if (o) {
+    if (orig && orig.self !== ch) {
+      raw = frameRms(orig.self); echo = echoMask(raw, frameRms(orig.other));
+      thr = Math.max(thr, Math.min(pct(raw, 0.995) * 0.04, pct(r, 0.995) * 0.1));   // eşik, silinen yankı yüzünden aşırı düşmesin
+      const ratios = []; for (let i = 0; i < r.length; i++) if (echo[i] && raw[i] > thr) ratios.push(r[i] / raw[i]);
+      k = ratios.length ? pct(ratios, 0.5) : 0;          // yankı silme sonrası kalan artık oranı (tipik)
+      echoC = echoMask(r, o);                            // temizlenmiş seste hâlâ kaynakla aynı ritimde olan (silinemeyen) yankı
+    } else echo = echoMask(r, o);
+  }
+  const sp = r.map((v, i) => {
+    if (v <= thr || (o && v <= o[i] * 0.12)) return 0;
+    if (!echo || !echo[i]) return echoC && echoC[i] ? 0 : 1;
+    return raw && v > raw[i] * Math.max(3 * k, 0.5) && !echoC[i] ? 1 : 0;   // yankılı anda: artıktan belirgin yüksek ve kaynaktan bağımsızsa gerçek konuşma
+  });
   const regs = []; let s = -1, last = -1, voiced = 0;
   const gap = Math.round(0.6 / fs), minV = 8;
   for (let i = 0; i < sp.length; i++) {
@@ -424,12 +489,28 @@ function makeInput(ch, s, e, regs, raw){
   const a = Math.floor(s * SR), b = Math.min(ch.length, Math.ceil(e * SR));
   const head = Math.round(PAD_HEAD * SR), out = new Float32Array(head + (b - a) + Math.round(PAD_TAIL * SR));
   const parts = regs && regs.length ? regs.filter(g => g.e > s && g.s < e).map(g => [Math.max(a, Math.floor(g.s * SR)), Math.min(b, Math.ceil(g.e * SR))]) : [[a, b]];
+  const nf = noiseFloor(ch);
   for (const [x, y] of parts) {
-    let peak = 0; for (let i = x; i < y; i++) { const v = Math.abs(ch[i]); if (v > peak) peak = v; }
-    const g = raw ? 1 : peak > 0 ? Math.min(8, 0.9 / peak) : 1;
-    for (let i = x; i < y; i++) out[head + i - a] = ch[i] * g;
+    if (raw) { for (let i = x; i < y; i++) out[head + i - a] = ch[i]; continue; }
+    agcInto(ch, x, y, out, head - a, nf);
   }
   return out;
+}
+// Kanalın gürültü tabanı (sessiz anların seviyesi) — gürültüyü güçlendirmemek için
+function noiseFloor(ch){ if (ch._nf == null) ch._nf = Math.max(pct(frameRms(ch), 0.2), 0.0005); return ch._nf; }
+// Anlık ses dengeleme: 25 ms'lik dilimlerin seviyesine göre kazanç; kısık konuşma güçlenir, yüksek ses (yankı) bastırılmaz ama büyütülmez de.
+function agcInto(ch, x, y, out, off, nf){
+  const B = 400, n = Math.ceil((y - x) / B), env = new Float32Array(n), gain = new Float32Array(n);
+  for (let k = 0; k < n; k++) { let sum = 0, c = 0; for (let i = x + k*B; i < Math.min(y, x + (k+1)*B); i++) { sum += ch[i]*ch[i]; c++; } env[k] = Math.sqrt(sum / Math.max(1, c)); }
+  for (let k = 0; k < n; k++) {
+    let m = 0; for (let j = Math.max(0, k-4); j <= Math.min(n-1, k+4); j++) if (env[j] > m) m = env[j];   // ±100 ms tepe takibi
+    gain[k] = m < nf * 2.5 ? 1 : Math.max(1, Math.min(10, 0.12 / m));                                  // gürültüyü büyütme
+  }
+  for (let i = x; i < y; i++) {
+    const t = (i - x) / B - 0.5, k = Math.max(0, Math.min(n - 1, Math.floor(t))), k2 = Math.min(n - 1, k + 1), f = Math.max(0, Math.min(1, t - k));
+    const v = ch[i] * (gain[k] * (1 - f) + gain[k2] * f);
+    out[off + i] = Math.tanh(v * 1.2) / 1.2;                                                           // yumuşak sınırlama
+  }
 }
 // Bir kanalı (veya mono sesi) metne çevir
 const PAUSE_MS = 1500;   // parçalar arası mola: ekran kartı/işlemci nefes alsın, bilgisayar donmasın
@@ -620,10 +701,17 @@ async function processRecord(r){
   const dec = await decodeChannels(r.blob);
   r.duration = dec.length / SR; r.stereo = dec.stereo;
   r.peaks = dec.channels.map(c => peaks(c));
+  let chs = dec.channels;
+  if (dec.stereo) {
+    const st = $('modelStatus'), prev = st.textContent; st.textContent = 'Yankı temizleniyor…';
+    const c = await cleanStereo(dec.channels[0], dec.channels[1]); chs = [c.L, c.R]; r.echo = c.info;
+    st.textContent = prev;
+  }
   const plans = dec.stereo
-    ? [{ spk:'P', ch:dec.channels[0], other:dec.channels[1] }, { spk:'V', ch:dec.channels[1], other:dec.channels[0] }]
-    : [{ spk:null, ch:dec.channels[0], other:null }];
-  for (const p of plans) { p.regs = vad(p.ch, p.other); p.pieces = groupPieces(p.regs); }
+    ? [{ spk:'P', ch:chs[0], other:chs[1] }, { spk:'V', ch:chs[1], other:chs[0] }]
+    : [{ spk:null, ch:chs[0], other:null }];
+  if (dec.stereo) { plans[0].orig = { self:dec.channels[0], other:dec.channels[1] }; plans[1].orig = { self:dec.channels[1], other:dec.channels[0] }; }
+  for (const p of plans) { p.regs = vad(p.ch, p.other, p.orig); p.pieces = groupPieces(p.regs); }
   r.regions = Object.fromEntries(plans.map(p => [p.spk || 'M', p.regs.map(g => [+g.s.toFixed(2), +g.e.toFixed(2)])]));
   if (dec.stereo) { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = plans[1].regs[0]?.raw ?? null; }
   else { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = null; }
@@ -847,7 +935,8 @@ function drawWave(){
 }
 function renderLegend(){
   const r = active();
-  $('legend').innerHTML = r && r.stereo ? '▲ <b class="p">Personel</b> (sol kanal) &nbsp; ▼ <b class="v">Vatandaş</b> (sağ kanal) &nbsp; · kenardaki çizgiler: programın konuşma olarak algıladığı yerler' : (r && r.peaks ? 'Tek kanallı (mono) kayıt — konuşmacı ayrımı yapılamaz' : '');
+  const ek = r && r.echo ? ` &nbsp;· Yankı (vatandaş hattı): ${esc(r.echo.V)}` : '';
+  $('legend').innerHTML = r && r.stereo ? '▲ <b class="p">Personel</b> (sol kanal) &nbsp; ▼ <b class="v">Vatandaş</b> (sağ kanal) &nbsp; · kenardaki çizgiler: programın konuşma olarak algıladığı yerler' + ek : (r && r.peaks ? 'Tek kanallı (mono) kayıt — konuşmacı ayrımı yapılamaz' : '');
 }
 
 /* =====================================================================

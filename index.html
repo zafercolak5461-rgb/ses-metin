@@ -165,16 +165,20 @@ const WORKER_CODE = `
 const CDNS = ['https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js',
               'https://unpkg.com/@huggingface/transformers@3.8.1/dist/transformers.min.js'];
 let pipeline, env, libErr = [];
-for (const u of CDNS) {
-  try { ({ pipeline, env } = await import(u)); break; }
-  catch (e) { libErr.push(new URL(u).host + ': ' + (e && e.message || e)); }
-}
-if (!pipeline) self.postMessage({ type:'fatal', message:'Kütüphane indirilemedi → ' + libErr.join(' | ') });
-else env.allowLocalModels = false;
+// Not: mesaj dinleyicisi kütüphane inmeden ÖNCE kurulmalı; yoksa bu sırada gelen komutlar kaybolur
+const ready = (async () => {
+  for (const u of CDNS) {
+    try { ({ pipeline, env } = await import(u)); break; }
+    catch (e) { libErr.push(new URL(u).host + ': ' + (e && e.message || e)); }
+  }
+  if (!pipeline) self.postMessage({ type:'fatal', message:'Kütüphane indirilemedi → ' + libErr.join(' | ') });
+  else env.allowLocalModels = false;
+})();
 let asr = null, currentModel = null;
 
 self.onmessage = async (e) => {
   const { type, id } = e.data;
+  await ready;
   try {
     if (!pipeline) throw new Error('Kütüphane indirilemedi → ' + libErr.join(' | '));
     if (type === 'load') {

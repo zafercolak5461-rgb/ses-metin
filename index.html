@@ -310,7 +310,8 @@ const TestEngine = {
   async load(m, p){ p && p(1); return { device:'test' }; },
   async run(audio){
     const dur = audio.length / 16000; this.n++;
-    return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n}: Merhaba, size nasıl yardımcı olabilirim?` }];
+    const t = ['Merhaba, size nasıl yardımcı olabilirim?', 'Kimlik numaranızı alabilir miyim?', 'Başvurum hakkında bilgi almak istiyorum.', 'Ödeme tarihi ne zaman?', 'Başka bir konuda yardımcı olabilir miyim?'][(this.n - 1) % 5];
+    return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n}: ${t}` }];
   }
 };
 const Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
@@ -344,11 +345,36 @@ function frameRms(ch){
   return out;
 }
 const pct = (arr, p) => { const a = Array.from(arr).sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0; };
-// Konuşma bölgeleri: karşı kanaldan sızan (çok daha kısık) sesi konuşma saymaz
+function pearson(a, ai, b, bi, n){
+  let sa = 0, sb = 0, saa = 0, sbb = 0, sab = 0;
+  for (let k = 0; k < n; k++) { const x = a[ai+k], y = b[bi+k]; sa += x; sb += y; saa += x*x; sbb += y*y; sab += x*y; }
+  const cov = sab - sa*sb/n, va = saa - sa*sa/n, vb = sbb - sb*sb/n;
+  return (va <= 0 || vb <= 0) ? 0 : cov / Math.sqrt(va * vb);
+}
+// Yankı tespiti: bir kanaldaki ses, diğer kanaldaki sesin GECİKMELİ kopyasıysa o kısım yankıdır.
+// (Personelin sesi vatandaş hattından yankı olarak geri gelebiliyor, bazen asıl sesten de yüksek.)
+function echoMask(r, o){
+  const W = 33, STEP = 16, MAXLAG = 25, mask = new Uint8Array(r.length);
+  const thrO = Math.max(pct(o, 0.2) * 3, 0.002);
+  for (let w = MAXLAG; w + W + MAXLAG < r.length; w += STEP) {
+    let mo = 0, mr = 0; for (let k = 0; k < W; k++) { mo += o[w+k]; mr += r[w+k]; }
+    if (mo / W < thrO) continue;                    // karşı kanal sessizse yankı olamaz
+    let best = -1, bestLag = 0;
+    for (let lag = -MAXLAG; lag <= MAXLAG; lag++) { const c = pearson(r, w, o, w - lag, W); if (c > best) { best = c; bestLag = lag; } }
+    if (best < 0.75) continue;                      // iki farklı ses: yankı değil
+    const isEcho = bestLag >= 2 ? true               // bu kanal gecikmeli → yankı
+                 : bestLag <= -2 ? false            // bu kanal önde → asıl ses
+                 : mr < mo * 0.25;                  // aynı anda: sadece çok kısıksa yankı say
+    if (isEcho) for (let k = 0; k < W; k++) mask[w+k] = 1;
+  }
+  return mask;
+}
+// Konuşma bölgeleri (yankı ve çok kısık sızıntı hariç)
 function vad(ch, other){
   const r = frameRms(ch), o = other ? frameRms(other) : null, fs = FRAME / SR;
-  const thr = Math.max(pct(r, 0.2) * 3, pct(r, 0.995) * 0.06, 0.003);
-  const sp = r.map((v, i) => (v > thr && (!o || v > o[i] * 0.35)) ? 1 : 0);
+  const thr = Math.max(pct(r, 0.2) * 3, pct(r, 0.995) * 0.04, 0.002);
+  const echo = o ? echoMask(r, o) : null;
+  const sp = r.map((v, i) => (v > thr && (!o || (!echo[i] && v > o[i] * 0.12))) ? 1 : 0);
   const regs = []; let s = -1, last = -1, voiced = 0;
   const gap = Math.round(0.6 / fs), minV = 8;
   for (let i = 0; i < sp.length; i++) {
@@ -378,20 +404,25 @@ function groupPieces(regs){
   return out;
 }
 // Parçayı hazırla: ses seviyesini dengele (kesik/kısık sesler için) + başa/sona sessizlik
-function makeInput(ch, s, e){
+// Her konuşma bölgesi kendi içinde dengelenir (kısık karşılama, yüksek konuşmanın gölgesinde kalmasın);
+// bölgeler arası (sessizlik/yankı) sıfırlanır.
+function makeInput(ch, s, e, regs){
   const a = Math.floor(s * SR), b = Math.min(ch.length, Math.ceil(e * SR));
-  let peak = 0; for (let i = a; i < b; i++) { const v = Math.abs(ch[i]); if (v > peak) peak = v; }
-  const g = peak > 0 ? Math.min(10, 0.9 / peak) : 1;
   const head = Math.round(PAD_HEAD * SR), out = new Float32Array(head + (b - a) + Math.round(PAD_TAIL * SR));
-  for (let i = a; i < b; i++) out[head + i - a] = ch[i] * g;
+  const parts = regs && regs.length ? regs.filter(g => g.e > s && g.s < e).map(g => [Math.max(a, Math.floor(g.s * SR)), Math.min(b, Math.ceil(g.e * SR))]) : [[a, b]];
+  for (const [x, y] of parts) {
+    let peak = 0; for (let i = x; i < y; i++) { const v = Math.abs(ch[i]); if (v > peak) peak = v; }
+    const g = peak > 0 ? Math.min(8, 0.9 / peak) : 1;
+    for (let i = x; i < y; i++) out[head + i - a] = ch[i] * g;
+  }
   return out;
 }
 // Bir kanalı (veya mono sesi) metne çevir
-async function transcribePieces(ch, pieces, spk, onPiece){
+async function transcribePieces(ch, pieces, spk, onPiece, regs){
   const segs = [];
   for (const p of pieces) {
     const dur = p.e - p.s;
-    const chunks = await Engine.run(makeInput(ch, p.s, p.e));
+    const chunks = await Engine.run(makeInput(ch, p.s, p.e, regs));
     for (const c of chunks) {
       const text = (c.text || '').trim(); if (!text) continue;
       const a = Math.max(0, (c.timestamp?.[0] ?? 0) - PAD_HEAD);
@@ -434,7 +465,18 @@ function cleanSegments(segs){
     rec.push({ key, t:s.start }); if (rec.length > 4) rec.shift();
     out.push(s);
   }
-  return out;
+  // Güvenlik: aynı cümle iki kanalda da yazıldıysa (yankı), vatandaş tarafındaki kopyayı at
+  const P = out.filter(s => s.spk === 'P');
+  return out.filter(s => s.spk !== 'V' || !P.some(p => {
+    const ov = Math.min(p.end, s.end) - Math.max(p.start, s.start);
+    return ov > 0.5 * Math.min(p.end - p.start, s.end - s.start) && simText(p.text, s.text) > 0.5;
+  }));
+}
+function simText(a, b){
+  const grams = (t) => { const s = ' ' + trLow(t).replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + ' ', g = new Set(); for (let i = 0; i < s.length - 2; i++) g.add(s.slice(i, i + 3)); return g; };
+  const A = grams(a), B = grams(b); if (!A.size || !B.size) return 0;
+  let n = 0; for (const x of A) if (B.has(x)) n++;
+  return n / (A.size + B.size - n);
 }
 
 /* =====================================================================
@@ -527,6 +569,7 @@ async function processRecord(r){
     ? [{ spk:'P', ch:dec.channels[0], other:dec.channels[1] }, { spk:'V', ch:dec.channels[1], other:dec.channels[0] }]
     : [{ spk:null, ch:dec.channels[0], other:null }];
   for (const p of plans) { p.regs = vad(p.ch, p.other); p.pieces = groupPieces(p.regs); }
+  r.regions = Object.fromEntries(plans.map(p => [p.spk || 'M', p.regs.map(g => [+g.s.toFixed(2), +g.e.toFixed(2)])]));
   if (dec.stereo) { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = plans[1].regs[0]?.raw ?? null; }
   else { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = null; }
   if (r.id === state.activeId) { drawWave(); renderLegend(); }
@@ -535,7 +578,7 @@ async function processRecord(r){
   await ensureModel();
   const total = plans.reduce((n, p) => n + p.pieces.length, 0) || 1; let done = 0;
   const t0 = performance.now(), segs = [];
-  for (const p of plans) segs.push(...await transcribePieces(p.ch, p.pieces, p.spk, () => { r.progress = ++done / total; renderList(); }));
+  for (const p of plans) segs.push(...await transcribePieces(p.ch, p.pieces, p.spk, () => { r.progress = ++done / total; renderList(); }, p.regs));
   r.segments = cleanSegments(segs);
   r.model = state.loadedModel; r.took = (performance.now() - t0) / 1000; r.status = 'hazir';
 }

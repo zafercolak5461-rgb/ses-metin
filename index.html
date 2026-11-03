@@ -89,6 +89,9 @@
   .editor{margin:4px 0 10px 84px;display:flex;flex-direction:column;gap:6px}
   .editor textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--accent);border-radius:6px;padding:8px;min-height:60px}
   .seg.fixing{background:rgba(34,197,94,.15)}
+  .seg.dropped{opacity:.55;cursor:default}
+  .seg.dropped:hover{background:none}
+  .seg.dropped .why{font-size:11px;color:var(--err);border:1px solid var(--err);border-radius:4px;padding:0 4px;margin-left:6px}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10}
   .modal[hidden]{display:none}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(640px,94vw);display:flex;flex-direction:column;gap:10px}
@@ -174,7 +177,8 @@
       <button id="copyBtn" disabled>Kopyala</button>
       <button id="txtBtn" disabled>.txt</button>
       <button id="srtBtn" disabled>.srt</button>
-      <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını da metne çevir">＋ Vatandaşı çevir</button>
+      <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını metne çevir (personel tarafına dokunmaz)">＋ Vatandaşı çevir</button>
+      <button id="dropBtn" hidden title="Programın elediği satırları (uydurma, tekrar, yankı, boş çıktı) soluk olarak göster">🔍 Elenenler</button>
       <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
       <button id="delBtn" disabled>Sil</button>
     </div>
@@ -317,6 +321,8 @@ const TestEngine = {
   async run(audio){
     const dur = audio.length / 16000; this.n++; window.__runs = (window.__runs || 0) + 1;
     await new Promise(r => setTimeout(r, +(new URLSearchParams(location.search).get('delay') || 0)));
+    const hl = +(new URLSearchParams(location.search).get('hallu') || 0);   // test: uzun parçada uydurma cümle
+    if (hl && dur > hl) return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'İzlediğiniz için teşekkür ederim.' }];
     const t = ['Merhaba, size nasıl yardımcı olabilirim?', 'Kimlik numaranızı alabilir miyim?', 'Başvurum hakkında bilgi almak istiyorum.', 'Ödeme tarihi ne zaman?', 'Başka bir konuda yardımcı olabilir miyim?'][(this.n - 1) % 5];
     return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n} (${dur.toFixed(1)} sn): ${t}` }];
   }
@@ -432,15 +438,23 @@ async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
     const p = pieces[pi], key = (spk || 'M') + ':' + pi;
     if (job && job.done.includes(key)) { onPiece && onPiece(); continue; }      // önceden bitmiş parça
     const dur = p.e - p.s, tp = performance.now();
-    const chunks = await Engine.run(makeInput(ch, p.s, p.e, regs));
     const before = segs.length;
-    for (const c of chunks) {
+    const addChunks = (chunks, s0, d) => { for (const c of chunks) {
       const text = (c.text || '').trim(); if (!text) continue;
       const a = Math.max(0, (c.timestamp?.[0] ?? 0) - PAD_HEAD);
-      let b = c.timestamp?.[1]; b = b == null ? dur : Math.max(0, b - PAD_HEAD);
-      const start = p.s + Math.min(a, dur), end = p.s + Math.min(Math.max(b, a + 0.3), dur);
-      segs.push({ start, end, text, spk });
-    }
+      let b = c.timestamp?.[1]; b = b == null ? d : Math.max(0, b - PAD_HEAD);
+      segs.push({ start: s0 + Math.min(a, d), end: s0 + Math.min(Math.max(b, a + 0.3), d), text, spk });
+    } };
+    const chunks = await Engine.run(makeInput(ch, p.s, p.e, regs));
+    const inside = (regs || []).filter(g => g.e > p.s && g.s < p.e);
+    if (isAllHallu(chunks) && inside.length > 1) {
+      // İkinci deneme: parçadaki her konuşma bölgesini tek başına dene (kısa cevaplar birlikteyken kayboluyor olabilir)
+      for (const g of inside) {
+        const s0 = Math.max(p.s, g.s), e0 = Math.min(p.e, g.e);
+        addChunks(await Engine.run(makeInput(ch, s0, e0, [g])), s0, e0 - s0);
+      }
+    } else addChunks(chunks, p.s, dur);
+    if (segs.length === before && job) job.empty = [...(job.empty || []), { start:p.s, end:p.e, spk }];
     if (job) { job.raw.push(...segs.slice(before)); job.done.push(key); job.took = (job.took || 0) + (performance.now() - tp) / 1000; save && await save(); }   // kaldığı yerden devam için
     onPiece && onPiece();
     if (pi < pieces.length - 1 && PAUSE_MS) await new Promise(res => setTimeout(res, PAUSE_MS));
@@ -456,34 +470,42 @@ function peaks(a, n=900){
 /* ---------- Metin temizliği: Whisper uydurmaları ve tekrar döngüleri ---------- */
 const trLow = (t) => (t || '').toLocaleLowerCase('tr');
 const HALLU = [/izlediğiniz için teşekkür/, /izlediğiniz için çok teşekkür/, /abone ol/, /altyazı/, /bir sonraki videoda/, /videoyu beğen/, /kanalıma abone/, /^m\.?\s?k\.?$/];
-function cleanText(t){
+function cleanText(t, removed){
   const sents = t.split(/(?<=[.!?…])\s+/).map(s => s.trim()).filter(Boolean);   // "5.793 lira" bölünmez
   const out = [];
   for (const s of sents) {
     const low = trLow(s).replace(/[^\p{L}\p{N} ]/gu, '').trim();
-    if (!low || HALLU.some(h => h.test(trLow(s)))) continue;
-    if (out.length && trLow(out[out.length-1]).replace(/[^\p{L}\p{N} ]/gu, '').trim() === low) continue; // "X. X. X." → "X."
+    if (!low) continue;
+    if (HALLU.some(h => h.test(trLow(s)))) { removed && removed.push([s, 'uydurma']); continue; }
+    if (out.length && trLow(out[out.length-1]).replace(/[^\p{L}\p{N} ]/gu, '').trim() === low) { removed && removed.push([s, 'tekrar']); continue; } // "X. X. X." → "X."
     out.push(s);
   }
   return out.join(' ');
 }
-function cleanSegments(segs){
+const isAllHallu = (chunks) => !chunks.some(c => cleanText((c.text || '').trim()));
+function cleanSegments(segs, dropped){
+  const drop = (s, text, reason) => dropped && dropped.push({ start:s.start, spk:s.spk, text, reason });
   segs.sort((a, b) => a.start - b.start);
   const out = [], recent = { P:[], V:[], null:[] };
   for (const s of segs) {
-    s.text = cleanText(s.text); if (!s.text) continue;
+    const rm = []; s.text = cleanText(s.text, rm); rm.forEach(([t, why]) => drop(s, t, why));
+    if (!s.text) continue;
     const key = trLow(s.text).replace(/[^\p{L}\p{N} ]/gu, '').trim();
     const rec = recent[s.spk] || (recent[s.spk] = []);
-    if (rec.some(r => r.key === key && s.start - r.t < 30)) continue;   // aynı konuşmacıda kısa sürede aynı cümle → döngü
+    if (rec.some(r => r.key === key && s.start - r.t < 30)) { drop(s, s.text, 'tekrar'); continue; }   // aynı konuşmacıda kısa sürede aynı cümle → döngü
     rec.push({ key, t:s.start }); if (rec.length > 4) rec.shift();
     out.push(s);
   }
   // Güvenlik: aynı cümle iki kanalda da yazıldıysa (yankı), vatandaş tarafındaki kopyayı at
   const P = out.filter(s => s.spk === 'P');
-  return out.filter(s => s.spk !== 'V' || !P.some(p => {
-    const ov = Math.min(p.end, s.end) - Math.max(p.start, s.start);
-    return ov > 0.5 * Math.min(p.end - p.start, s.end - s.start) && simText(p.text, s.text) > 0.5;
-  }));
+  return out.filter(s => {
+    const dup = s.spk === 'V' && P.some(p => {
+      const ov = Math.min(p.end, s.end) - Math.max(p.start, s.start);
+      return ov > 0.5 * Math.min(p.end - p.start, s.end - s.start) && simText(p.text, s.text) > 0.5;
+    });
+    if (dup) drop(s, s.text, 'yankı kopyası');
+    return !dup;
+  });
 }
 function simText(a, b){
   const grams = (t) => { const s = ' ' + trLow(t).replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + ' ', g = new Set(); for (let i = 0; i < s.length - 2; i++) g.add(s.slice(i, i + 3)); return g; };
@@ -602,8 +624,12 @@ async function processRecord(r){
   job.took = job.took || 0;
   for (const p of todo) await transcribePieces(p.ch, p.pieces, p.spk, () => { r.progress = ++done / total; renderList(); }, p.regs, job, save);
   const took = job.took;
-  if (mode === 'V') { r.segments = cleanSegments([...r.segments, ...job.raw]); r.vDone = true; r.addV = false; r.took = (r.took || 0) + took; }
-  else { r.segments = cleanSegments(job.raw.slice()); r.vDone = todo.some(p => p.spk === 'V'); r.took = took; }
+  const dropped = (job.empty || []).map(e => ({ start:e.start, spk:e.spk, text:`(${fmt(e.start)}–${fmt(e.end)} arası ses vardı ama model metin çıkarmadı)`, reason:'boş çıktı' }));
+  if (mode === 'V') {
+    r.segments = cleanSegments([...r.segments.filter(s => s.spk !== 'V'), ...job.raw], dropped);
+    r.dropped = [...(r.dropped || []).filter(d => d.spk !== 'V'), ...dropped];
+    r.vDone = true; r.addV = false; r.took = (r.took || 0) + took;
+  } else { r.segments = cleanSegments(job.raw.slice(), dropped); r.dropped = dropped; r.vDone = todo.some(p => p.spk === 'V'); r.took = took; }
   r.model = state.loadedModel; r.status = 'hazir'; delete r.job;
 }
 
@@ -700,11 +726,17 @@ function renderTranscript(){
   ['search','copyBtn','txtBtn','srtBtn','fixMode'].forEach(b => $(b).disabled = !ready);
   $('redoBtn').disabled = !(r && (r.status === 'hazir' || r.status === 'hata'));
   $('spkFilter').hidden = !(r && r.stereo && ready);
-  $('addVBtn').hidden = !(r && r.stereo && ready && !r.vDone);
+  $('addVBtn').hidden = !(r && r.stereo && ready);
+  $('addVBtn').textContent = r && r.vDone ? '↻ Vatandaşı yeniden çevir' : '＋ Vatandaşı çevir';
+  $('dropBtn').hidden = !(r && ready && r.dropped && r.dropped.length);
+  $('dropBtn').textContent = `🔍 Elenenler (${(r && r.dropped || []).length})`;
+  $('dropBtn').classList.toggle('on', !!state.showDropped);
   if (!r) { box.innerHTML = '<div class="empty">Kayıt seçilmedi.</div>'; updateSearchUi(); return; }
   if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; updateSearchUi(); return; }
-  if (!r.segments.length) { box.innerHTML = '<div class="empty">Konuşma bulunamadı.</div>'; updateSearchUi(); return; }
+  if (!r.segments.length && !(state.showDropped && (r.dropped || []).length)) { box.innerHTML = `<div class="empty">Konuşma bulunamadı.${(r.dropped || []).length ? ' Elenen satırları görmek için 🔍 Elenenler düğmesine bas.' : ''}</div>`; updateSearchUi(); return; }
   const q = trLow($('search').value.trim());
+  const dropRows = state.showDropped ? (r.dropped || []).filter(d => visibleSeg(d)).map(d => ({ t:d.start, html:
+    `<div class="seg dropped"><span class="t">${fmt(d.start)}${d.spk ? `<span class="who ${d.spk}">${spkName[d.spk]}</span>` : ''}</span><span class="txt"><s>${esc(d.text)}</s> <span class="why">${esc(d.reason)}</span></span></div>` })) : [];
   box.innerHTML = r.segments.map((s, i) => {
     if (!visibleSeg(s)) return '';
     const txt = shown(s);
@@ -717,8 +749,9 @@ function renderTranscript(){
         <div class="row"><button class="ed-rec">🎙 Söyleyerek yazdır</button><button class="ed-play">🔊 Nasıl duyulacak?</button><span class="ed-st note"></span></div>
         <div class="row"><button class="ed-save primary">Kaydet</button><button class="ed-cancel">Vazgeç</button>${s.fix ? '<button class="ed-del">Düzeltmeyi sil</button>' : ''}</div></div>` : '';
     const who = s.spk ? `<span class="who ${s.spk}">${spkName[s.spk]}</span>` : '';
-    return `<div class="seg ${s.spk || ''} ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}${who}</span><span class="txt"><span class="orig">${html}</span>${fix}</span><button class="fixb" title="Doğrusunu yaz">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${editor}`;
-  }).join('');
+    return '\u0000' + s.start + '\u0000' + `<div class="seg ${s.spk || ''} ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}${who}</span><span class="txt"><span class="orig">${html}</span>${fix}</span><button class="fixb" title="Doğrusunu yaz">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${editor}`;
+  }).filter(Boolean).map(h => { const m = h.match(/^\u0000([^\u0000]+)\u0000/); return { t:+m[1], html:h.slice(m[0].length) }; })
+    .concat(dropRows).sort((a, b) => a.t - b.t).map(x => x.html).join('');
   const ta = box.querySelector('.editor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
   markCurrentHit();
@@ -1018,7 +1051,7 @@ $('transcript').onclick = (e) => {
     if (Rec.active()) Rec.stop();
     state.editing = null; DB.put(r); renderTranscript(); return;
   }
-  const s = e.target.closest('.seg'); if (!s) return;
+  const s = e.target.closest('.seg'); if (!s || s.dataset.i == null) return;   // elenen satırlar tıklanmaz
   const i = +s.dataset.i, seg = active().segments[i];
   if (e.target.closest('.say')) { $('audio').pause(); TTS.speak(shown(seg)); return; }
   if (e.target.closest('.fixb')) { if (Rec.active()) Rec.stop(); state.editing = state.editing === i ? null : i; renderTranscript(); return; }
@@ -1064,7 +1097,10 @@ $('srtBtn').onclick = () => download(baseName(active()) + '.srt', toSrt(active()
 $('redoBtn').onclick = () => { const r = active(); if (!r) return;
   if (r.segments.some(s => s.fix) && !confirm('Bu kayıttaki düzeltmeler (✏️) silinecek. Yeniden çevrilsin mi?')) return;
   r.status = 'bekliyor'; r.segments = []; r.progress = 0; r.addV = false; r.vDone = false; delete r.job; state.editing = null; resetFix(); DB.put(r); renderList(); renderTranscript(); runQueue(); };
-$('addVBtn').onclick = () => { const r = active(); if (!r) return; r.addV = true; r.status = 'bekliyor'; r.progress = 0; DB.put(r); renderList(); renderTranscript(); runQueue(); };
+$('dropBtn').onclick = () => { state.showDropped = !state.showDropped; renderTranscript(); };
+$('addVBtn').onclick = () => { const r = active(); if (!r) return;
+  if (r.vDone && r.segments.some(s => s.spk === 'V' && s.fix) && !confirm('Vatandaş satırlarındaki düzeltmeler silinecek. Devam edilsin mi?')) return;
+  r.addV = true; r.status = 'bekliyor'; r.progress = 0; DB.put(r); renderList(); renderTranscript(); runQueue(); };
 $('delBtn').onclick = () => { const r = active(); if (!r) return; DB.del(r.id); state.recs = state.recs.filter(x => x !== r);
   audio.pause(); audio.removeAttribute('src'); state.activeId = null; $('ptitle').textContent = 'Kayıt seçilmedi';
   ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = true);

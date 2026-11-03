@@ -128,7 +128,7 @@
     </select>
   </label>
   <label class="badge" title="Ekran kartı hızlıdır ama bilgisayarı yorabilir; işlemci yavaştır ama bilgisayar rahat çalışır">Çalıştır
-    <select id="devSel"><option value="gpu">Ekran kartı (hızlı)</option><option value="cpu">İşlemci (rahat)</option></select>
+    <select id="devSel"><option value="node">Bilgisayar motoru (en hızlı)</option><option value="gpu">Tarayıcı · ekran kartı</option><option value="cpu">Tarayıcı · işlemci</option></select>
   </label>
   <label class="badge" title="Kapalıysa sadece personel kanalı çevrilir (yarı süre). Vatandaş tarafı sonradan kayıt bazında çevrilebilir."><input type="checkbox" id="withV"> Vatandaşı da çevir</label>
   <span class="badge" id="modelStatus">Model yüklenmedi</span>
@@ -366,7 +366,37 @@ const TestEngine = {
     return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n} (${dur.toFixed(1)} sn): ${t}` }];
   }
 };
-const Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
+// Bilgisayar motoru: aynı bilgisayarda çalışan Node.js (motor.mjs). Çeviriyi işlemcinin tüm çekirdekleriyle yapar.
+const LOCAL_URL = 'http://127.0.0.1:8765';
+const LocalEngine = {
+  name: 'Bilgisayar motoru', device: 'node', model: null, ctrl: null,
+  async ping(){
+    try { const c = new AbortController(); setTimeout(() => c.abort(), 1500);
+          const r = await fetch(LOCAL_URL + '/durum', { signal: c.signal }); return r.ok; } catch { return false; }
+  },
+  async load(model, onProgress){
+    onProgress && onProgress(null, 'Bilgisayar motorunda model yükleniyor… (ilk seferde biraz sürer)');
+    const r = await fetch(LOCAL_URL + '/yukle?model=' + encodeURIComponent(model), { method:'POST' });
+    if (!r.ok) throw new Error('Bilgisayar motoru modeli açamadı: ' + ((await r.json().catch(() => ({}))).error || r.status));
+    this.model = model; return { device:'node' };
+  },
+  async run(audio, opts){
+    this.ctrl = new AbortController();
+    try {
+      const r = await fetch(LOCAL_URL + '/cevir', { method:'POST', body: audio, signal: this.ctrl.signal,
+        headers: { 'Content-Type':'application/octet-stream', 'X-Model': this.model, 'X-Opts': encodeURIComponent(JSON.stringify(opts || {})) } });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || ('Motor hatası ' + r.status));
+      return j.chunks;
+    } catch (e) {
+      if (e.name === 'AbortError') throw Object.assign(new Error('Durduruldu'), { cancelled:true });
+      if (e instanceof TypeError) throw new Error('Bilgisayar motoruna ulaşılamadı (motor penceresi kapandı mı?)');
+      throw e;
+    } finally { this.ctrl = null; }
+  },
+  abort(){ this.ctrl && this.ctrl.abort(); }
+};
+let Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
 if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput }; });
 
 /* =====================================================================
@@ -551,7 +581,8 @@ function agcInto(ch, x, y, out, off, nf){
   }
 }
 // Bir kanalı (veya mono sesi) metne çevir
-const PAUSE_MS = 1500;   // parçalar arası mola: ekran kartı/işlemci nefes alsın, bilgisayar donmasın
+// parçalar arası mola: tarayıcıda çevirirken bilgisayar donmasın. Bilgisayar motorunda sayfa donmaz, mola gerekmez.
+const pauseMs = () => Engine === LocalEngine ? 0 : 1500;
 async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
   const segs = [];
   for (let pi = 0; pi < pieces.length; pi++) {
@@ -588,7 +619,7 @@ async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
     if (segs.length === before && job) job.empty = [...(job.empty || []), { start:p.s, end:p.e, spk }];
     if (job) { job.raw.push(...segs.slice(before)); job.done.push(key); const dt = (performance.now() - tp) / 1000; job.took = (job.took || 0) + dt; job.by = job.by || {}; job.by[spk || 'M'] = (job.by[spk || 'M'] || 0) + dt; save && await save(); }   // kaldığı yerden devam için
     onPiece && onPiece();
-    if (pi < pieces.length - 1 && PAUSE_MS) await new Promise(res => setTimeout(res, PAUSE_MS));
+    if (pi < pieces.length - 1 && pauseMs()) await new Promise(res => setTimeout(res, pauseMs()));
   }
   return segs;
 }
@@ -734,15 +765,23 @@ async function ensureModel(){
   const m = $('modelSel').value, key = engineKey();
   if (state.loadedKey === key) return;
   const st = $('modelStatus'); let last = Date.now();
+  if (Engine !== TestEngine) {
+    if ($('devSel').value === 'node') {
+      st.textContent = 'Bilgisayar motoru aranıyor…';
+      if (await LocalEngine.ping()) Engine = LocalEngine;
+      else { Engine = BrowserWhisperEngine; if (!state.motorWarned) { state.motorWarned = true; alert('Bilgisayar motoru açık değil.\n\nMasaüstündeki "Ses Metin Motoru" kısayolunu çalıştırıp tekrar deneyebilirsin.\nŞimdilik kayıtlar tarayıcıda (işlemciyle) çevrilecek.'); } }
+    } else Engine = BrowserWhisperEngine;
+    if (state.loadedKey === engineKey() + '|' + Engine.device) return;
+  }
   st.textContent = 'Motor başlatılıyor…';
   const watch = setInterval(() => { if (Date.now() - last > 45000) st.textContent = 'Bekleniyor… (internet yavaş olabilir; F12 > Console\'da hata var mı bak)'; }, 5000);
   try {
     await Engine.load(m, (p, info, bytes) => { last = Date.now();
-      st.textContent = info ? info : `Model indiriliyor… %${Math.round(p*100)}` + (bytes ? ` (${(bytes/1048576).toFixed(0)} MB)` : ''); }, $('devSel').value);
+      st.textContent = info ? info : `Model indiriliyor… %${Math.round(p*100)}` + (bytes ? ` (${(bytes/1048576).toFixed(0)} MB)` : ''); }, $('devSel').value === 'node' ? 'cpu' : $('devSel').value);
   } finally { clearInterval(watch); }
-  state.loadedModel = m; state.loadedKey = key;
+  state.loadedModel = m; state.loadedKey = Engine === TestEngine ? key : key + '|' + Engine.device;
   st.textContent = `Hazır · ${m.split('/')[1]}`;
-  $('engineInfo').textContent = `${Engine.name} · ${Engine.device === 'webgpu' ? 'GPU' : Engine.device === 'wasm' ? 'CPU' : Engine.device}`;
+  $('engineInfo').textContent = `${Engine.name} · ${Engine.device === 'webgpu' ? 'GPU' : Engine.device === 'wasm' ? 'CPU' : Engine.device === 'node' ? 'tüm çekirdekler' : Engine.device}`;
 }
 
 async function processRecord(r){

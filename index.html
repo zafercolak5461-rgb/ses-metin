@@ -165,7 +165,7 @@
         <button id="nextHit" title="Sonraki (Enter)" disabled>▼</button>
       </div>
       <select id="spkFilter" title="Kimin konuşması gösterilsin" hidden><option value="all">Herkes</option><option value="P">Personel</option><option value="V">Vatandaş</option></select>
-      <button id="followBtn" title="Metni kaydın çalan yerine geri getir" hidden>⤵ Akışa dön</button>
+      <button id="followBtn" title="Metni kaydın çalan yerine geri getir" hidden>⤵ Takip kapalı · Akışa dön</button>
       <button id="fixMode" disabled title="Kaydı çalarken düzeltilen cümlelerin yerine doğrusunu seslendirir">🎓 Düzeltilmiş akış</button>
       <button id="copyBtn" disabled>Kopyala</button>
       <button id="txtBtn" disabled>.txt</button>
@@ -738,7 +738,7 @@ function syncHighlight(force){
   lastNow = idx;
   document.querySelectorAll('.seg.now').forEach(e => e.classList.remove('now'));
   const el = document.querySelector(`.seg[data-i="${idx}"]`);
-  if (el) { el.classList.add('now'); if (state.follow && !$('audio').paused) el.scrollIntoView({ block:'center', behavior:'smooth' }); }
+  if (el) { el.classList.add('now'); if (state.follow && (!$('audio').paused || force)) el.scrollIntoView({ block:'center', behavior:'smooth' }); }
 }
 
 function drawWave(){
@@ -1011,7 +1011,7 @@ $('spkFilter').onchange = () => runSearch(false);
 const audio = $('audio');
 $('playBtn').onclick = () => {
   if (fx.inFix || fx.stopAt != null) { const keep = new Set(fx.played); resetFix(); fx.played = keep; }
-  audio.paused ? audio.play() : audio.pause(); };
+  if (audio.paused) { setFollow(true); syncHighlight(true); audio.play(); } else audio.pause(); };
 audio.addEventListener('seeked', () => { for (const k of [...fx.played]) if (active() && active().segments[k] && active().segments[k].start >= audio.currentTime - 0.1) fx.played.delete(k); });
 $('backBtn').onclick = () => audio.currentTime = Math.max(0, audio.currentTime - 5);
 $('fwdBtn').onclick = () => audio.currentTime += 5;

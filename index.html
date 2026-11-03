@@ -48,6 +48,8 @@
   .item .stats{font-size:12px;color:var(--muted)}
   .item .stats .bad{color:var(--warn);font-weight:600}
   .hits{color:var(--warn);font-weight:600}
+  .item button.mini{padding:2px 8px;font-size:12px;margin-top:2px}
+  .st-durduruldu{color:var(--warn)}
   .st-bekliyor{color:var(--muted)} .st-isleniyor{color:var(--warn)} .st-hazir{color:var(--ok)} .st-hata{color:var(--err)}
   .bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
   .bar>i{display:block;height:100%;background:var(--warn);width:0}
@@ -311,16 +313,24 @@ const BrowserWhisperEngine = {
     this.device = r.device; this.model = model;
     return r;
   },
-  async run(audio, opts){ const r = await this._call({ type:'run', audio, opts }, null, [audio.buffer]); return r.chunks; }
+  async run(audio, opts){ const r = await this._call({ type:'run', audio, opts }, null, [audio.buffer]); return r.chunks; },
+  abort(){
+    if (!this.worker) return;
+    this.worker.terminate(); this.worker = null;
+    for (const [, p] of this.pending) p.reject(Object.assign(new Error('Durduruldu'), { cancelled:true }));
+    this.pending.clear();
+  }
 };
 
 // Test için sahte motor (adres sonuna ?test eklenirse)
 const TestEngine = {
   name: 'Test motoru', device:'test', n: 0,
   async load(m, p){ p && p(1); return { device:'test' }; },
+  abort(){ this.aborted = true; },
   async run(audio, opts){
     const dur = audio.length / 16000; this.n++; window.__runs = (window.__runs || 0) + 1;
     await new Promise(r => setTimeout(r, +(new URLSearchParams(location.search).get('delay') || 0)));
+    if (this.aborted) { this.aborted = false; throw Object.assign(new Error('Durduruldu'), { cancelled:true }); }
     if (new URLSearchParams(location.search).has('loop') && !(opts && opts.repetition_penalty)) return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'Ne? Ne? Ne? Ne? Ne?' }];
     if (new URLSearchParams(location.search).has('wloop') && !(opts && opts.repetition_penalty)) { window.__caps = [...(window.__caps || []), opts && opts.max_new_tokens];
       return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:'- ' + Array(Math.min(300, (opts && opts.max_new_tokens) || 300)).fill('Gülün').join(' ') }]; }
@@ -521,6 +531,7 @@ async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
   for (let pi = 0; pi < pieces.length; pi++) {
     const p = pieces[pi], key = (spk || 'M') + ':' + pi;
     if (job && job.done.includes(key)) { onPiece && onPiece(); continue; }      // önceden bitmiş parça
+    if (state.cancel) throw Object.assign(new Error('Durduruldu'), { cancelled:true });
     const dur = p.e - p.s, tp = performance.now();
     const before = segs.length;
     const addChunks = (chunks, s0, d) => { for (const c of chunks) {
@@ -753,17 +764,37 @@ async function processRecord(r){
   r.model = state.loadedModel; r.status = 'hazir'; delete r.job;
 }
 
+// Yeniden çevirme öncesi mevcut sonucu sakla: yanlışlıkla başlatılıp durdurulursa geri gelsin
+function backup(r){ r.backup = { segments:r.segments, dropped:r.dropped, vDone:r.vDone, took:r.took, tookP:r.tookP, tookV:r.tookV, model:r.model }; }
+function afterStop(r){
+  r.addV = false; r.progress = 0; if (Engine.aborted) Engine.aborted = false;
+  if (r.backup) { Object.assign(r, r.backup); delete r.backup; delete r.job; r.status = 'hazir'; toast('Durduruldu — önceki metin geri yüklendi'); }
+  else { r.status = 'durduruldu'; toast('Durduruldu — ▶ Devam ile kaldığı yerden sürdürebilirsin'); }
+  if (!state.loadedKey) $('modelStatus').textContent = 'Durduruldu';
+}
+function stopRecord(id){
+  const r = state.recs.find(x => x.id === id); if (!r) return;
+  if (r.status === 'bekliyor') { afterStop(r); DB.put(r); renderList(); if (r.id === state.activeId) renderTranscript(); return; }
+  if (r.status === 'isleniyor') {
+    state.cancel = id;
+    Engine.abort && Engine.abort(); state.loadedKey = null;   // o anki parçayı hemen kes
+  }
+}
 async function runQueue(){
   if (state.queueRunning) return; state.queueRunning = true;
   try {
     let r;
     while ((r = state.recs.find(x => x.status === 'bekliyor'))) {
       r.status = 'isleniyor'; r.progress = 0; r.error = null; renderList();
-      try { await processRecord(r); }
+      try { await processRecord(r); if (state.cancel === r.id) throw Object.assign(new Error('Durduruldu'), { cancelled:true }); delete r.backup; }
       catch (err) {
-        console.error(err); r.status = 'hata'; r.error = err.message;
-        if (!state.loadedModel) $('modelStatus').textContent = 'Model yüklenemedi: ' + err.message;
+        if (err.cancelled || state.cancel === r.id) { afterStop(r); }
+        else {
+          console.error(err); r.status = 'hata'; r.error = err.message;
+          if (!state.loadedModel) $('modelStatus').textContent = 'Model yüklenemedi: ' + err.message;
+        }
       }
+      if (state.cancel === r.id) state.cancel = null;
       DB.put(r); renderList();
       if (r.id === state.activeId) renderTranscript();
     }
@@ -803,7 +834,7 @@ function statsLine(r){
   return parts.join(' · ');
 }
 function renderList(){
-  const st = { bekliyor:'Sırada', isleniyor:'İşleniyor', hazir:'Hazır', hata:'Hata' };
+  const st = { bekliyor:'Sırada', isleniyor:'İşleniyor', hazir:'Hazır', hata:'Hata', durduruldu:'Durduruldu' };
   const vis = state.recs.filter(recPasses), q = $('recQ').value.trim();
   const filtered = q || $('lateOn').checked || $('vFirst').checked;
   $('lcount').textContent = filtered ? `${vis.length} / ${state.recs.length} kayıt filtreye uyuyor` : `${state.recs.length} kayıt`;
@@ -816,6 +847,8 @@ function renderList(){
         <span>${q && r._hits ? `<span class="hits">${r._hits}×</span> ` : ''}${r.duration ? fmt(r.duration) : ''}</span></div>
       ${statsLine(r) ? `<div class="stats">${statsLine(r)}</div>` : ''}
       ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}
+      ${r.status === 'isleniyor' || r.status === 'bekliyor' ? `<div class="row"><button class="mini stop" title="Çeviriyi hemen durdur">⏹ Durdur</button>${state.cancel === r.id ? '<span class="badge">durduruluyor…</span>' : ''}</div>` : ''}
+      ${r.status === 'durduruldu' ? `<div class="row"><button class="mini resume" title="Kaldığı parçadan devam et">▶ Devam</button></div>` : ''}
     </div>`).join('');
   const ri = $('list').querySelector('.ren-in'); if (ri) { ri.focus(); ri.select(); }
 }
@@ -844,7 +877,7 @@ function visibleSeg(s){ const f = $('spkFilter').value; return f === 'all' || s.
 function renderTranscript(){
   const r = active(), box = $('transcript'), ready = r && r.status === 'hazir';
   ['search','copyBtn','txtBtn','srtBtn','fixMode'].forEach(b => $(b).disabled = !ready);
-  $('redoBtn').disabled = !(r && (r.status === 'hazir' || r.status === 'hata'));
+  $('redoBtn').disabled = !(r && (r.status === 'hazir' || r.status === 'hata' || r.status === 'durduruldu'));
   $('spkFilter').hidden = !(r && r.stereo && ready);
   $('addVBtn').hidden = !(r && r.stereo && ready);
   $('addVBtn').textContent = r && r.vDone ? '↻ Vatandaşı yeniden çevir' : '＋ Vatandaşı çevir';
@@ -852,7 +885,7 @@ function renderTranscript(){
   $('dropBtn').textContent = `🔍 Elenenler (${(r && r.dropped || []).length})`;
   $('dropBtn').classList.toggle('on', !!state.showDropped);
   if (!r) { box.innerHTML = '<div class="empty">Kayıt seçilmedi.</div>'; updateSearchUi(); return; }
-  if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; updateSearchUi(); return; }
+  if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : r.status === 'durduruldu' ? 'Çeviri durduruldu. Devam etmek için listede ▶ Devam düğmesine bas.' : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; updateSearchUi(); return; }
   if (!r.segments.length && !(state.showDropped && (r.dropped || []).length)) { box.innerHTML = `<div class="empty">Konuşma bulunamadı.${(r.dropped || []).length ? ' Elenen satırları görmek için 🔍 Elenenler düğmesine bas.' : ''}</div>`; updateSearchUi(); return; }
   const q = trLow($('search').value.trim());
   const dropRows = state.showDropped ? (r.dropped || []).filter(d => visibleSeg(d)).map(d => ({ t:d.start, html:
@@ -1150,6 +1183,8 @@ $('list').onclick = (e) => {
   if (e.target.closest('.ren-in')) return;
   const it = e.target.closest('.item'); if (!it) return;
   if (e.target.closest('.ren')) { state.renaming = it.dataset.id; renderList(); return; }
+  if (e.target.closest('.stop')) { stopRecord(it.dataset.id); renderList(); return; }
+  if (e.target.closest('.resume')) { const r = state.recs.find(x => x.id === it.dataset.id); r.status = 'bekliyor'; DB.put(r); renderList(); runQueue(); return; }
   if (state.renaming) finishRename(true);
   select(it.dataset.id);
 };
@@ -1217,11 +1252,11 @@ $('txtBtn').onclick = () => download(baseName(active()) + '.txt', plainText(acti
 $('srtBtn').onclick = () => download(baseName(active()) + '.srt', toSrt(active()));
 $('redoBtn').onclick = () => { const r = active(); if (!r) return;
   if (r.segments.some(s => s.fix) && !confirm('Bu kayıttaki düzeltmeler (✏️) silinecek. Yeniden çevrilsin mi?')) return;
-  r.status = 'bekliyor'; r.segments = []; r.progress = 0; r.addV = false; r.vDone = false; delete r.job; state.editing = null; resetFix(); DB.put(r); renderList(); renderTranscript(); runQueue(); };
+  backup(r); r.status = 'bekliyor'; r.segments = []; r.progress = 0; r.addV = false; r.vDone = false; delete r.job; state.editing = null; resetFix(); DB.put(r); renderList(); renderTranscript(); runQueue(); };
 $('dropBtn').onclick = () => { state.showDropped = !state.showDropped; renderTranscript(); };
 $('addVBtn').onclick = () => { const r = active(); if (!r) return;
   if (r.vDone && r.segments.some(s => s.spk === 'V' && s.fix) && !confirm('Vatandaş satırlarındaki düzeltmeler silinecek. Devam edilsin mi?')) return;
-  r.addV = true; r.status = 'bekliyor'; r.progress = 0; DB.put(r); renderList(); renderTranscript(); runQueue(); };
+  backup(r); r.addV = true; r.status = 'bekliyor'; r.progress = 0; DB.put(r); renderList(); renderTranscript(); runQueue(); };
 $('delBtn').onclick = () => { const r = active(); if (!r) return; DB.del(r.id); state.recs = state.recs.filter(x => x !== r);
   audio.pause(); audio.removeAttribute('src'); state.activeId = null; $('ptitle').textContent = 'Kayıt seçilmedi';
   ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = true);

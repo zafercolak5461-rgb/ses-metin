@@ -118,6 +118,10 @@
       <option value="onnx-community/whisper-large-v3-turbo" selected>En iyi (turbo)</option>
     </select>
   </label>
+  <label class="badge" title="Ekran kartı hızlıdır ama bilgisayarı yorabilir; işlemci yavaştır ama bilgisayar rahat çalışır">Çalıştır
+    <select id="devSel"><option value="gpu">Ekran kartı (hızlı)</option><option value="cpu">İşlemci (rahat)</option></select>
+  </label>
+  <label class="badge" title="Kapalıysa sadece personel kanalı çevrilir (yarı süre). Vatandaş tarafı sonradan kayıt bazında çevrilebilir."><input type="checkbox" id="withV"> Vatandaşı da çevir</label>
   <span class="badge" id="modelStatus">Model yüklenmedi</span>
   <button id="dictOpen" title="Sık yanlış çevrilen kelimeleri düzelt">📖 Sözlük</button>
   <button id="ttsOpen">🗣 Metin → Ses</button>
@@ -170,6 +174,7 @@
       <button id="copyBtn" disabled>Kopyala</button>
       <button id="txtBtn" disabled>.txt</button>
       <button id="srtBtn" disabled>.srt</button>
+      <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını da metne çevir">＋ Vatandaşı çevir</button>
       <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
       <button id="delBtn" disabled>Sil</button>
     </div>
@@ -241,9 +246,10 @@ self.onmessage = async (e) => {
   try {
     if (!pipeline) throw new Error('Kütüphane indirilemedi → ' + libErr.join(' | '));
     if (type === 'load') {
-      const { model } = e.data;
-      if (asr && currentModel === model) { self.postMessage({ id, type:'loaded', device: self._device }); return; }
-      const hasGPU = !!(self.navigator && self.navigator.gpu && await self.navigator.gpu.requestAdapter().catch(()=>null));
+      const { model, pref } = e.data;
+      if (asr && currentModel === model + '|' + pref) { self.postMessage({ id, type:'loaded', device: self._device }); return; }
+      if (asr && asr.dispose) { try { await asr.dispose(); } catch {} } asr = null;
+      const hasGPU = pref !== 'cpu' && !!(self.navigator && self.navigator.gpu && await self.navigator.gpu.requestAdapter().catch(()=>null));
       const progress_callback = (p) => { if (p.status === 'progress') self.postMessage({ id, type:'dl', file:p.file, loaded:p.loaded, total:p.total }); };
       let device = hasGPU ? 'webgpu' : 'wasm';
       try {
@@ -254,7 +260,7 @@ self.onmessage = async (e) => {
         device = 'wasm';
         asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback, dtype: dtypeFor(model, device) });
       }
-      currentModel = model; self._device = device;
+      currentModel = model + '|' + pref; self._device = device;
       self.postMessage({ id, type:'loaded', device });
     }
     if (type === 'run') {
@@ -290,9 +296,9 @@ const BrowserWhisperEngine = {
       this.worker.postMessage({ ...msg, id }, transfer || []);
     });
   },
-  async load(model, onProgress){
+  async load(model, onProgress, pref){
     const files = {};
-    const r = await this._call({ type:'load', model }, (d) => {
+    const r = await this._call({ type:'load', model, pref }, (d) => {
       if (d.type === 'info') { onProgress && onProgress(null, d.text); return; }
       files[d.file] = d; let l=0, t=0;
       for (const f of Object.values(files)) { l += f.loaded||0; t += f.total||0; }
@@ -309,9 +315,10 @@ const TestEngine = {
   name: 'Test motoru', device:'test', n: 0,
   async load(m, p){ p && p(1); return { device:'test' }; },
   async run(audio){
-    const dur = audio.length / 16000; this.n++;
+    const dur = audio.length / 16000; this.n++; window.__runs = (window.__runs || 0) + 1;
+    await new Promise(r => setTimeout(r, +(new URLSearchParams(location.search).get('delay') || 0)));
     const t = ['Merhaba, size nasıl yardımcı olabilirim?', 'Kimlik numaranızı alabilir miyim?', 'Başvurum hakkında bilgi almak istiyorum.', 'Ödeme tarihi ne zaman?', 'Başka bir konuda yardımcı olabilir miyim?'][(this.n - 1) % 5];
-    return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n}: ${t}` }];
+    return [{ timestamp:[PAD_HEAD, dur - PAD_TAIL], text:`Örnek cümle ${this.n} (${dur.toFixed(1)} sn): ${t}` }];
   }
 };
 const Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
@@ -418,11 +425,15 @@ function makeInput(ch, s, e, regs){
   return out;
 }
 // Bir kanalı (veya mono sesi) metne çevir
-async function transcribePieces(ch, pieces, spk, onPiece, regs){
+const PAUSE_MS = 1500;   // parçalar arası mola: ekran kartı/işlemci nefes alsın, bilgisayar donmasın
+async function transcribePieces(ch, pieces, spk, onPiece, regs, job, save){
   const segs = [];
-  for (const p of pieces) {
-    const dur = p.e - p.s;
+  for (let pi = 0; pi < pieces.length; pi++) {
+    const p = pieces[pi], key = (spk || 'M') + ':' + pi;
+    if (job && job.done.includes(key)) { onPiece && onPiece(); continue; }      // önceden bitmiş parça
+    const dur = p.e - p.s, tp = performance.now();
     const chunks = await Engine.run(makeInput(ch, p.s, p.e, regs));
+    const before = segs.length;
     for (const c of chunks) {
       const text = (c.text || '').trim(); if (!text) continue;
       const a = Math.max(0, (c.timestamp?.[0] ?? 0) - PAD_HEAD);
@@ -430,7 +441,9 @@ async function transcribePieces(ch, pieces, spk, onPiece, regs){
       const start = p.s + Math.min(a, dur), end = p.s + Math.min(Math.max(b, a + 0.3), dur);
       segs.push({ start, end, text, spk });
     }
+    if (job) { job.raw.push(...segs.slice(before)); job.done.push(key); job.took = (job.took || 0) + (performance.now() - tp) / 1000; save && await save(); }   // kaldığı yerden devam için
     onPiece && onPiece();
+    if (pi < pieces.length - 1 && PAUSE_MS) await new Promise(res => setTimeout(res, PAUSE_MS));
   }
   return segs;
 }
@@ -444,7 +457,7 @@ function peaks(a, n=900){
 const trLow = (t) => (t || '').toLocaleLowerCase('tr');
 const HALLU = [/izlediğiniz için teşekkür/, /izlediğiniz için çok teşekkür/, /abone ol/, /altyazı/, /bir sonraki videoda/, /videoyu beğen/, /kanalıma abone/, /^m\.?\s?k\.?$/];
 function cleanText(t){
-  const sents = (t.match(/[^.!?…]+[.!?…]*/g) || [t]).map(s => s.trim()).filter(Boolean);
+  const sents = t.split(/(?<=[.!?…])\s+/).map(s => s.trim()).filter(Boolean);   // "5.793 lira" bölünmez
   const out = [];
   for (const s of sents) {
     const low = trLow(s).replace(/[^\p{L}\p{N} ]/gu, '').trim();
@@ -545,17 +558,18 @@ async function addFiles(files){
   renderList(); runQueue();
 }
 
+const engineKey = () => $('modelSel').value + '|' + $('devSel').value;
 async function ensureModel(){
-  const m = $('modelSel').value;
-  if (state.loadedModel === m) return;
+  const m = $('modelSel').value, key = engineKey();
+  if (state.loadedKey === key) return;
   const st = $('modelStatus'); let last = Date.now();
   st.textContent = 'Motor başlatılıyor…';
   const watch = setInterval(() => { if (Date.now() - last > 45000) st.textContent = 'Bekleniyor… (internet yavaş olabilir; F12 > Console\'da hata var mı bak)'; }, 5000);
   try {
     await Engine.load(m, (p, info, bytes) => { last = Date.now();
-      st.textContent = info ? info : `Model indiriliyor… %${Math.round(p*100)}` + (bytes ? ` (${(bytes/1048576).toFixed(0)} MB)` : ''); });
+      st.textContent = info ? info : `Model indiriliyor… %${Math.round(p*100)}` + (bytes ? ` (${(bytes/1048576).toFixed(0)} MB)` : ''); }, $('devSel').value);
   } finally { clearInterval(watch); }
-  state.loadedModel = m;
+  state.loadedModel = m; state.loadedKey = key;
   st.textContent = `Hazır · ${m.split('/')[1]}`;
   $('engineInfo').textContent = `${Engine.name} · ${Engine.device === 'webgpu' ? 'GPU' : Engine.device === 'wasm' ? 'CPU' : Engine.device}`;
 }
@@ -574,13 +588,23 @@ async function processRecord(r){
   else { r.firstP = plans[0].regs[0]?.raw ?? null; r.firstV = null; }
   if (r.id === state.activeId) { drawWave(); renderLegend(); }
   renderList(); DB.put(r);
-  // 2) Metne çevir
+  // 2) Hangi kanallar çevrilecek?
+  const mode = r.addV ? 'V' : 'main';
+  const todo = !dec.stereo ? plans
+    : mode === 'V' ? [plans[1]]
+    : ($('withV').checked ? plans : [plans[0]]);
+  // 3) Yarım kalmış iş varsa (aynı model + aynı mod) kaldığı yerden devam
+  const model = $('modelSel').value;
+  if (!r.job || r.job.model !== model || r.job.mode !== mode || r.job.spks !== todo.map(p => p.spk).join()) r.job = { model, mode, spks: todo.map(p => p.spk).join(), done: [], raw: [], took: 0 };
+  const job = r.job, save = () => DB.put(r);
   await ensureModel();
-  const total = plans.reduce((n, p) => n + p.pieces.length, 0) || 1; let done = 0;
-  const t0 = performance.now(), segs = [];
-  for (const p of plans) segs.push(...await transcribePieces(p.ch, p.pieces, p.spk, () => { r.progress = ++done / total; renderList(); }, p.regs));
-  r.segments = cleanSegments(segs);
-  r.model = state.loadedModel; r.took = (performance.now() - t0) / 1000; r.status = 'hazir';
+  const total = todo.reduce((n, p) => n + p.pieces.length, 0) || 1; let done = 0;
+  job.took = job.took || 0;
+  for (const p of todo) await transcribePieces(p.ch, p.pieces, p.spk, () => { r.progress = ++done / total; renderList(); }, p.regs, job, save);
+  const took = job.took;
+  if (mode === 'V') { r.segments = cleanSegments([...r.segments, ...job.raw]); r.vDone = true; r.addV = false; r.took = (r.took || 0) + took; }
+  else { r.segments = cleanSegments(job.raw.slice()); r.vDone = todo.some(p => p.spk === 'V'); r.took = took; }
+  r.model = state.loadedModel; r.status = 'hazir'; delete r.job;
 }
 
 async function runQueue(){
@@ -642,7 +666,7 @@ function renderList(){
       <div class="name" title="${esc(r.name)}">${state.renaming === r.id
         ? `<input class="ren-in" value="${esc(title(r))}">`
         : `<span>${esc(title(r))}</span><button class="ren" title="Adını değiştir">✏️</button>`}</div>
-      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
+      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) + (r.addV ? ' (vatandaş)' : '') : ''}${r.status==='bekliyor' && r.job && r.job.done.length ? ' (kaldığı yerden devam edecek)' : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
         <span>${q && r._hits ? `<span class="hits">${r._hits}×</span> ` : ''}${r.duration ? fmt(r.duration) : ''}</span></div>
       ${statsLine(r) ? `<div class="stats">${statsLine(r)}</div>` : ''}
       ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}
@@ -676,6 +700,7 @@ function renderTranscript(){
   ['search','copyBtn','txtBtn','srtBtn','fixMode'].forEach(b => $(b).disabled = !ready);
   $('redoBtn').disabled = !(r && (r.status === 'hazir' || r.status === 'hata'));
   $('spkFilter').hidden = !(r && r.stereo && ready);
+  $('addVBtn').hidden = !(r && r.stereo && ready && !r.vDone);
   if (!r) { box.innerHTML = '<div class="empty">Kayıt seçilmedi.</div>'; updateSearchUi(); return; }
   if (!ready) { box.innerHTML = `<div class="empty">${r.status === 'hata' ? 'Hata: ' + esc(r.error||'') : 'Metne çevriliyor… Bitince burada görünecek.'}</div>`; updateSearchUi(); return; }
   if (!r.segments.length) { box.innerHTML = '<div class="empty">Konuşma bulunamadı.</div>'; updateSearchUi(); return; }
@@ -811,7 +836,7 @@ const TTS = {
     speechSynthesis.speak(u);
     return u;
   },
-  _sentences: (t) => (t.match(/[^.!?…]+[.!?…]*/g) || []).map(s => s.trim()).filter(Boolean),
+  _sentences: (t) => t.split(/(?<=[.!?…])\s+/).map(s => s.trim()).filter(Boolean),
   speak(text, onDone){
     if (!this.ok || !text.trim()) { onDone && onDone(); return; }
     speechSynthesis.cancel();
@@ -1029,13 +1054,17 @@ $('txtBtn').onclick = () => download(baseName(active()) + '.txt', plainText(acti
 $('srtBtn').onclick = () => download(baseName(active()) + '.srt', toSrt(active()));
 $('redoBtn').onclick = () => { const r = active(); if (!r) return;
   if (r.segments.some(s => s.fix) && !confirm('Bu kayıttaki düzeltmeler (✏️) silinecek. Yeniden çevrilsin mi?')) return;
-  r.status = 'bekliyor'; r.segments = []; r.progress = 0; state.editing = null; resetFix(); DB.put(r); renderList(); renderTranscript(); runQueue(); };
+  r.status = 'bekliyor'; r.segments = []; r.progress = 0; r.addV = false; r.vDone = false; delete r.job; state.editing = null; resetFix(); DB.put(r); renderList(); renderTranscript(); runQueue(); };
+$('addVBtn').onclick = () => { const r = active(); if (!r) return; r.addV = true; r.status = 'bekliyor'; r.progress = 0; DB.put(r); renderList(); renderTranscript(); runQueue(); };
 $('delBtn').onclick = () => { const r = active(); if (!r) return; DB.del(r.id); state.recs = state.recs.filter(x => x !== r);
   audio.pause(); audio.removeAttribute('src'); state.activeId = null; $('ptitle').textContent = 'Kayıt seçilmedi';
   ['playBtn','backBtn','fwdBtn','delBtn'].forEach(b => $(b).disabled = true);
   if (state.recs[0]) select(state.recs[0].id); else { renderList(); renderTranscript(); drawWave(); renderLegend(); } };
 $('modelSel').onchange = () => { try { localStorage.setItem('ses-metin-model', $('modelSel').value); } catch {}
   $('modelStatus').textContent = 'Yeni model sıradaki kayıtta yüklenecek'; };
+$('devSel').onchange = () => { try { localStorage.setItem('ses-metin-dev', $('devSel').value); } catch {}
+  $('modelStatus').textContent = 'Yeni ayar sıradaki kayıtta geçerli olacak'; };
+$('withV').onchange = () => { try { localStorage.setItem('ses-metin-withV', $('withV').checked ? '1' : ''); } catch {} };
 document.addEventListener('keydown', (e) => { if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && $('ttsPanel').hidden && $('dictPanel').hidden && active()) { e.preventDefault(); $('playBtn').click(); } });
 addEventListener('resize', drawWave);
 
@@ -1048,7 +1077,9 @@ $('dictSave').onclick = () => { Dict.rules = Dict.parse($('dictText').value); Di
 
 /* ---------- Başlangıç ---------- */
 (async () => {
-  try { const m = localStorage.getItem('ses-metin-model'); if (m && [...$('modelSel').options].some(o => o.value === m)) $('modelSel').value = m; } catch {}
+  try { const m = localStorage.getItem('ses-metin-model'); if (m && [...$('modelSel').options].some(o => o.value === m)) $('modelSel').value = m;
+        const d = localStorage.getItem('ses-metin-dev'); if (d) $('devSel').value = d;
+        $('withV').checked = localStorage.getItem('ses-metin-withV') === '1'; } catch {}
   const saved = (await DB.all()).sort((a,b) => b.added - a.added);
   for (const r of saved) if (r.status === 'isleniyor') r.status = 'bekliyor';
   state.recs = saved; renderList();

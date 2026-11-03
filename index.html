@@ -90,7 +90,7 @@
     <select id="modelSel">
       <option value="onnx-community/whisper-base">Hızlı (base)</option>
       <option value="onnx-community/whisper-small" selected>Dengeli (small)</option>
-      <option value="onnx-community/whisper-large-v3-turbo">En iyi (turbo, güçlü PC)</option>
+      <option value="onnx-community/whisper-large-v3-turbo">En iyi (turbo, ~550 MB)</option>
     </select>
   </label>
   <span class="badge" id="modelStatus">Model yüklenmedi</span>
@@ -175,6 +175,12 @@ const ready = (async () => {
   else env.allowLocalModels = false;
 })();
 let asr = null, currentModel = null;
+// Model + cihaz için indirilecek sürüm. Turbo'nun sıkıştırılmamış hali ~2.6 GB olduğundan GPU'da da q4 (~550 MB) kullanılır.
+function dtypeFor(model, device){
+  const big = /large|turbo/.test(model);
+  if (device === 'webgpu') return big ? { encoder_model:'q4', decoder_model_merged:'q4' } : { encoder_model:'fp32', decoder_model_merged:'q4' };
+  return { encoder_model:'q8', decoder_model_merged:'q8' };
+}
 
 self.onmessage = async (e) => {
   const { type, id } = e.data;
@@ -188,15 +194,13 @@ self.onmessage = async (e) => {
       const progress_callback = (p) => { if (p.status === 'progress') self.postMessage({ id, type:'dl', file:p.file, loaded:p.loaded, total:p.total }); };
       let device = hasGPU ? 'webgpu' : 'wasm';
       try {
-        asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback,
-          dtype: hasGPU ? { encoder_model:'fp32', decoder_model_merged:'q4' } : { encoder_model:'q8', decoder_model_merged:'q8' } });
+        asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback, dtype: dtypeFor(model, device) });
       } catch (gpuErr) {
         if (device !== 'webgpu') throw gpuErr;
         // Ekran kartı (WebGPU) ile açılamazsa işlemciyle (CPU) tekrar dene
         self.postMessage({ id, type:'info', text:'GPU ile açılamadı, işlemciyle deneniyor…' });
         device = 'wasm';
-        asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback,
-          dtype: { encoder_model:'q8', decoder_model_merged:'q8' } });
+        asr = await pipeline('automatic-speech-recognition', model, { device, progress_callback, dtype: dtypeFor(model, device) });
       }
       currentModel = model; self._device = device;
       self.postMessage({ id, type:'loaded', device });
@@ -419,7 +423,7 @@ function renderList(){
   $('list').innerHTML = state.recs.map(r => `
     <div class="item ${r.id === state.activeId ? 'active' : ''}" data-id="${r.id}">
       <div class="name" title="${esc(r.name)}">${esc(r.name)}</div>
-      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}</span><span>${r.duration ? fmt(r.duration) : ''}</span></div>
+      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span><span>${r.duration ? fmt(r.duration) : ''}</span></div>
       ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}
     </div>`).join('');
 }

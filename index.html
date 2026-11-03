@@ -492,12 +492,10 @@ function groupPieces(regs){
 function makeInput(ch, s, e, regs, raw){
   const a = Math.floor(s * SR), b = Math.min(ch.length, Math.ceil(e * SR));
   const head = Math.round(PAD_HEAD * SR), out = new Float32Array(head + (b - a) + Math.round(PAD_TAIL * SR));
-  const parts = regs && regs.length ? regs.filter(g => g.e > s && g.s < e).map(g => [Math.max(a, Math.floor(g.s * SR)), Math.min(b, Math.ceil(g.e * SR))]) : [[a, b]];
-  const nf = noiseFloor(ch);
-  for (const [x, y] of parts) {
-    if (raw) { for (let i = x; i < y; i++) out[head + i - a] = ch[i]; continue; }
-    agcInto(ch, x, y, out, head - a, nf);
-  }
+  // Ses KESİNTİSİZ verilir: Whisper kelimeleri bağlamdan tanır; aralar susturulursa kısa parçalarda şaşırıp döngüye giriyor.
+  // (Bölgeler sadece parçanın sınırlarını belirler.)
+  if (raw) { for (let i = a; i < b; i++) out[head + i - a] = ch[i]; return out; }
+  agcInto(ch, a, b, out, head - a, noiseFloor(ch));
   return out;
 }
 // Kanalın gürültü tabanı (sessiz anların seviyesi) — gürültüyü güçlendirmemek için
@@ -814,7 +812,7 @@ function renderList(){
       <div class="name" title="${esc(r.name)}">${state.renaming === r.id
         ? `<input class="ren-in" value="${esc(title(r))}">`
         : `<span>${esc(title(r))}</span><button class="ren" title="Adını değiştir">✏️</button>`}</div>
-      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) + (r.addV ? ' (vatandaş)' : '') : ''}${r.status==='bekliyor' && r.job && r.job.done.length ? ' (kaldığı yerden devam edecek)' : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${r.stereo && r.tookV != null ? `P ${fmt(r.tookP)} + V ${fmt(r.tookV)}` : fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
+      <div class="meta"><span class="st-${r.status}">${st[r.status]}${r.status==='isleniyor' ? ' %' + Math.round(r.progress*100) + (r.addV ? ' (vatandaş)' : '') : ''}${r.status==='bekliyor' && r.job && r.job.done.length ? ' (kaldığı yerden devam edecek)' : ''}${r.status==='hata' ? ': ' + esc(r.error||'') : ''}${r.status==='hazir' && r.took ? ` · ${r.stereo && r.tookV != null ? `P ${r.tookP != null ? fmt(r.tookP) : '—'} + V ${fmt(r.tookV)}` : fmt(r.took)} sürdü${r.model ? ' (' + r.model.split('-').pop() + ')' : ''}` : ''}</span>
         <span>${q && r._hits ? `<span class="hits">${r._hits}×</span> ` : ''}${r.duration ? fmt(r.duration) : ''}</span></div>
       ${statsLine(r) ? `<div class="stats">${statsLine(r)}</div>` : ''}
       ${r.status === 'isleniyor' ? `<div class="bar"><i style="width:${r.progress*100}%"></i></div>` : ''}

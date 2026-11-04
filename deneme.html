@@ -909,8 +909,13 @@ const Kalip = {
       }
       if (best) cands.push(best);
     }
+    // Metinde zaten doğru geçen kalıplar (ekleri farklı olsa da) korunur: başka bir kalıp oraya önerilmez
+    // (ör. "şartlı gebelik yardımına" varken "şartlı eğitim yardımı" önerilmesin)
+    const safe = [];
+    for (const p of this.prepared()) { const L = p.words.length;
+      for (let i = 0; i + L <= toks.length; i++) { let ok = true; for (let j = 0; j < L && ok; j++) ok = same(toks[i + j].w, p.words[j]); if (ok) safe.push([toks[i].s, toks[i + L - 1].e]); } }
     cands.sort((x, y) => y.score - x.score);
-    const pick = []; for (const c of cands) if (!pick.some(p => c.s < p.e && p.s < c.e)) pick.push(c);
+    const pick = []; for (const c of cands) if (!safe.some(([a, b]) => c.s < b && a < c.e) && !pick.some(p => c.s < p.e && p.s < c.e)) pick.push(c);
     pick.sort((x, y) => x.s - y.s);
     if (this.cache.size > 3000) this.cache.clear();
     this.cache.set(key, pick); return pick;

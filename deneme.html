@@ -116,6 +116,9 @@
   #sugPop .alt{font-size:15px;color:#86efac}
   #sugBtn.on{border-color:var(--warn);color:var(--warn)}
   #spellBtn.on{border-color:var(--err);color:#fca5a5}
+  #ctxBtn.on{border-color:#60a5fa;color:#93c5fd}
+  .seg .ctx{text-decoration:underline dotted #60a5fa;text-underline-offset:3px;text-decoration-thickness:2px;cursor:help}
+  .seg .ctx:hover{background:rgba(96,165,250,.15)}
   .seg .spl{text-decoration:underline dotted var(--err);text-underline-offset:3px;text-decoration-thickness:2px;cursor:help}
   .seg .spl:hover{background:rgba(239,68,68,.15)}
   #sugPop .cands{display:flex;flex-wrap:wrap;gap:6px}
@@ -217,6 +220,7 @@
       <button id="srtBtn" disabled>.srt</button>
       <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını metne çevir (personel tarafına dokunmaz)">＋ Vatandaşı çevir</button>
       <button id="spellBtn" title="Türkçe sözlükte olmayan kelimeleri kırmızı noktalı çizgiyle işaretle (ilk açılışta ≈14 MB sözlük bir kez indirilir)">🔤 Yazım denetimi</button>
+      <button id="ctxBtn" title="Kayıtlarındaki metinlerden öğrenir: bu bağlamda genelde başka (benzer) bir kelime geçiyorsa mavi noktalı çizgiyle işaretler">🧠 Bağlam</button>
       <button id="sugBtn" hidden title="Doğru kalıplara benzeyen yerleri (💡 sözlük) altı kesik çizgiyle işaretle">💡 Öneriler</button>
       <button id="dropBtn" hidden title="Programın elediği satırları (uydurma, tekrar, yankı, boş çıktı) soluk olarak göster">🔍 Elenenler</button>
       <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
@@ -461,7 +465,7 @@ const LocalEngine = {
   abort(){ this.ctrl && this.ctrl.abort(); }
 };
 let Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
-if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, Kalip, Spell, learnFromEdit, shown }; });
+if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, Kalip, Spell, Ctx, learnFromEdit, shown, state }; });
 
 /* =====================================================================
    2) SES İŞLEME: kanal ayırma, konuşma bulma (VAD), normalize, parçalama
@@ -1081,6 +1085,68 @@ const Spell = {
 };
 Spell.load();
 
+/* ---------- Bağlamdan öğrenme: kayıtlarındaki metinlerden hangi kelimenin hangisinden önce/sonra geldiğini öğrenir ----------
+   Kalıplar (×5), düzeltme kuralları ve elle düzelttiğin satırlar (×3), tüm çevrilmiş metinler (×1) birlikte sayılır.
+   Türkçede var olan ama bu bağlamda hiç görülmemiş bir kelime, aynı yerde sık görülen benzer bir kelime varsa işaretlenir. */
+const Ctx = {
+  KEY:'ses-metin-baglam', IKEY:'ses-metin-baglam-yoksay', ign:new Set(), _m:null, _sig:'', dirty:true, cache:new Map(), MIN:300,
+  load(){ try { this.ign = new Set(JSON.parse(localStorage.getItem(this.IKEY) || '[]')); } catch {} },
+  saveIgn(){ this.cache.clear(); try { localStorage.setItem(this.IKEY, JSON.stringify([...this.ign])); } catch {} },
+  on(){ try { return localStorage.getItem(this.KEY) !== '0'; } catch { return true; } },
+  setOn(v){ try { localStorage.setItem(this.KEY, v ? '1' : '0'); } catch {} },
+  invalidate(){ this.dirty = true; },
+  toks(t){ const out = []; let pe = 0;
+    for (const m of (t || '').matchAll(/[\p{L}\p{N}'’]+/gu)) { out.push({ s:m.index, e:m.index + m[0].length, raw:m[0], w:Dict.norm(m[0]), brk: out.length === 0 || /[.?!…]/.test(t.slice(pe, m.index)) }); pe = m.index + m[0].length; }
+    return out; },
+  model(){
+    const sig = state.recs.length + ':' + state.recs.reduce((a, r) => a + (r.segments ? r.segments.length : 0), 0);
+    if (this._m && !this.dirty && sig === this._sig) return this._m;
+    const nx = new Map(), pv = new Map(); let total = 0;
+    const add = (M, a, b, k) => { let x = M.get(a); if (!x) M.set(a, x = new Map()); x.set(b, (x.get(b) || 0) + k); };
+    const feed = (t, k) => { const T = this.toks(t); total += T.length * k;
+      for (let i = 1; i < T.length; i++) if (!T[i].brk && T[i].w && T[i - 1].w) { add(nx, T[i - 1].w, T[i].w, k); add(pv, T[i].w, T[i - 1].w, k); } };
+    for (const k of Kalip.list) if (k.on) feed(k.text, 5);
+    for (const r of Dict.rules) if (r.on) feed(r.to, 3);
+    for (const r of state.recs) for (const s of r.segments || []) feed(s.edit != null ? s.edit : Dict.apply(s.text, s.spk), s.edit != null ? 3 : 1);
+    this._m = { nx, pv, total }; this._sig = sig; this.dirty = false; this.cache.clear(); return this._m;
+  },
+  cnt(M, a, b){ const x = a && M.get(a); return (x && x.get(b)) || 0; },
+  sim(a, b){ return Math.max(levRatio(a, b), levRatio(harm(a), harm(b)) - 0.08); },
+  // Bu konumda (önceki p, sonraki n) görülen kelimeler ve ağırlıkları
+  cands(p, n){ const m = this.model(), c = new Map();
+    if (p) for (const [w, k] of m.nx.get(p) || []) c.set(w, (c.get(w) || 0) + k);
+    if (n) for (const [w, k] of m.pv.get(n) || []) c.set(w, (c.get(w) || 0) + k);
+    return c; },
+  around(t, s){ const T = this.toks(t), i = T.findIndex(x => x.s === s); if (i < 0) return {};
+    return { p: i > 0 && !T[i].brk ? T[i - 1] : null, n: i + 1 < T.length && !T[i + 1].brk ? T[i + 1] : null, x:T[i] }; },
+  // Bağlama uymayan kelimeler [{s,e,w,c,k,p,n}]
+  find(t){
+    const m = this.model(); if (!t || m.total < this.MIN) return [];
+    const c0 = this.cache.get(t); if (c0) return c0;
+    const T = this.toks(t), out = [];
+    for (let i = 0; i < T.length; i++) {
+      const x = T[i]; if (x.w.length < 3 || /\d/.test(x.w)) continue;
+      if (!x.brk && x.raw[0] !== x.raw[0].toLocaleLowerCase('tr')) continue;               // özel isim
+      const p = i > 0 && !x.brk ? T[i - 1].w : null, n = i + 1 < T.length && !T[i + 1].brk ? T[i + 1].w : null; if (!p && !n) continue;
+      const own = Math.max(0, this.cnt(m.nx, p, x.w) - (p ? 1 : 0)) + Math.max(0, this.cnt(m.nx, x.w, n) - (n ? 1 : 0));   // bu satırın kendisi hariç
+      let best = null;
+      for (const [c, k] of this.cands(p, n)) {
+        if (c === x.w || c.length < 3 || same(c, x.w) || k < 3 || k < 3 * own) continue;
+        const sm = this.sim(c, x.w); if (sm < 0.5) continue;
+        // İki yanı da varsa aday her iki yandan da desteklenmeli ("şey yapabilir miyim" → "olabilir" önerilmesin);
+        // tek yan varsa daha güçlü kanıt istenir
+        if (p && n) { if (!this.cnt(m.nx, p, c) || !this.cnt(m.nx, c, n)) continue; }
+        else if (k < 5 || sm < 0.6) continue;
+        const sc = sm + Math.min(0.3, Math.log(1 + k) / 10); if (!best || sc > best.sc) best = { c, k, sc };
+      }
+      if (best && !this.ign.has(`${p || ''}|${x.w}|${best.c}`)) out.push({ s:x.s, e:x.e, w:x.w, c:best.c, k:best.k, p, n });
+    }
+    if (this.cache.size > 3000) this.cache.clear();
+    this.cache.set(t, out); return out;
+  }
+};
+Ctx.load();
+
 // Elle düzeltmeden sözlük kuralı çıkar: kelime düzeyinde fark
 function learnFromEdit(before, after, spk){
   const A = before.split(/\s+/).filter(Boolean), B = after.split(/\s+/).filter(Boolean);
@@ -1347,7 +1413,7 @@ function renderTranscript(){
   const q = trLow($('search').value.trim());
   const dropRows = state.showDropped ? (r.dropped || []).filter(d => visibleSeg(d)).map(d => ({ t:d.start, html:
     `<div class="seg dropped"><span class="t">${fmt(d.start)}${d.spk ? `<span class="who ${d.spk}">${spkName[d.spk]}</span>` : ''}</span><span class="txt"><s>${esc(d.text)}</s> <span class="why">${esc(d.reason)}</span></span></div>` })) : [];
-  state.sugTotal = 0; state.splTotal = 0; if (state.showSug == null) state.showSug = true;
+  state.sugTotal = 0; state.splTotal = 0; state.ctxTotal = 0; if (state.showSug == null) state.showSug = true;
   box.innerHTML = r.segments.map((s, i) => {
     if (!visibleSeg(s)) return '';
     const txt = shown(s);
@@ -1355,9 +1421,11 @@ function renderTranscript(){
     if (!q && s.edit == null) {
       const sg = state.showSug ? Kalip.suggest(txt, s.spk, { start:s.start, dur:r.duration }) : [];
       const sp = Spell.wanted() ? Spell.find(txt).filter(x => !sg.some(g => x.s < g.e && g.s < x.e)) : [];
-      state.sugTotal += sg.length; state.splTotal += sp.length;
+      const cx = Ctx.on() ? Ctx.find(txt).filter(x => ![...sg, ...sp].some(g => x.s < g.e && g.s < x.e)) : [];
+      state.sugTotal += sg.length; state.splTotal += sp.length; state.ctxTotal += cx.length;
       const marks = [...sg.map((x, n) => ({ s:x.s, e:x.e, h:`<span class="sug" data-n="${n}" title="Öneri: ${esc(x.k.text)}">` })),
-                     ...sp.map(x => ({ s:x.s, e:x.e, h:`<span class="spl" data-w="${esc(x.w)}" title="Türkçe sözlükte bulunamadı">` }))].sort((a, b) => a.s - b.s);
+                     ...sp.map(x => ({ s:x.s, e:x.e, h:`<span class="spl" data-w="${esc(x.w)}" data-s="${x.s}" title="Türkçe sözlükte bulunamadı">` })),
+                     ...cx.map(x => ({ s:x.s, e:x.e, h:`<span class="ctx" data-s="${x.s}" title="Bu bağlamda genelde: ${esc(x.c)}">` }))].sort((a, b) => a.s - b.s);
       if (marks.length) { let o = '', k = 0; for (const x of marks) { o += esc(txt.slice(k, x.s)) + x.h + esc(txt.slice(x.s, x.e)) + '</span>'; k = x.e; } html = o + esc(txt.slice(k)); }
     }
     if (q) { const low = trLow(txt); hit = low.includes(q);
@@ -1378,7 +1446,7 @@ function renderTranscript(){
   $('sugBtn').hidden = !Kalip.list.some(k => k.on);
   $('sugBtn').classList.toggle('on', !!state.showSug);
   $('sugBtn').textContent = state.showSug ? `💡 Öneriler (${state.sugTotal})` : '💡 Öneriler (kapalı)';
-  renderSpellBtn();
+  renderSpellBtn(); renderCtxBtn();
   const ta = box.querySelector('.editor textarea, .teditor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
   markCurrentHit();
@@ -1676,11 +1744,11 @@ $('transcript').onclick = (e) => {
     if (e.target.closest('.te-save')) {
       const before = Dict.apply(seg.text, seg.spk), after = te.querySelector('textarea').value.replace(/\s+/g, ' ').trim();
       if (!after || after === before) delete seg.edit; else seg.edit = after;
-      state.tEditing = null; Spell._voc = null; DB.put(r); renderTranscript(); runSearch(false);
+      state.tEditing = null; Spell._voc = null; Ctx.invalidate(); DB.put(r); renderTranscript(); runSearch(false);
       if (seg.edit != null) openLearn(learnFromEdit(before, after, seg.spk), r, seg);
       return;
     }
-    if (e.target.closest('.te-reset')) { delete seg.edit; state.tEditing = null; DB.put(r); renderTranscript(); runSearch(false); return; }
+    if (e.target.closest('.te-reset')) { delete seg.edit; state.tEditing = null; Spell._voc = null; Ctx.invalidate(); DB.put(r); renderTranscript(); runSearch(false); return; }
     if (e.target.closest('.te-cancel')) { state.tEditing = null; renderTranscript(); }
     return;
   }
@@ -1696,7 +1764,9 @@ $('transcript').onclick = (e) => {
     state.editing = null; DB.put(r); renderTranscript(); return;
   }
   const spEl = e.target.closest('.spl');
-  if (spEl) { openSpell(spEl, spEl.dataset.w); return; }
+  if (spEl) { const seg = active().segments[+spEl.closest('.seg').dataset.i]; openSpell(spEl, spEl.dataset.w, Ctx.around(shown(seg), +spEl.dataset.s)); return; }
+  const cxEl = e.target.closest('.ctx');
+  if (cxEl) { const seg = active().segments[+cxEl.closest('.seg').dataset.i], t = shown(seg); openCtx(cxEl, Ctx.find(t).find(x => x.s === +cxEl.dataset.s), Ctx.around(t, +cxEl.dataset.s)); return; }
   const sgEl = e.target.closest('.sug');
   if (sgEl) { const si = +sgEl.closest('.seg').dataset.i, seg = active().segments[si]; openSug(sgEl, seg, Kalip.suggest(shown(seg), seg.spk, { start:seg.start, dur:active().duration })[+sgEl.dataset.n]); return; }
   const s = e.target.closest('.seg'); if (!s || s.dataset.i == null) return;   // elenen satırlar tıklanmaz
@@ -1921,7 +1991,7 @@ function dictCleanup(){
   const n = Dict.rules.length; Dict.rules = Dict.rules.filter(r => Dict.norm(r.from) || (r.to || '').trim()); if (Dict.rules.length !== n) Dict.save();
   const m = Kalip.list.length; Kalip.list = Kalip.list.filter(k => Dict.norm(k.text)); if (Kalip.list.length !== m) Kalip.save();
 }
-function afterDictChange(){ Kalip.cache.clear(); Spell._voc = null; renderList(); renderTranscript(); runSearch(false); }
+function afterDictChange(){ Kalip.cache.clear(); Spell._voc = null; Ctx.invalidate(); renderList(); renderTranscript(); runSearch(false); }
 function dictTab(t){ DUI.tab = t; DUI.fresh.clear(); $('dictQ').value = ''; $('dictBulk').hidden = true; dictRefreshUsage(); dictRender(); }
 $('tabR').onclick = () => dictTab('r');
 $('tabK').onclick = () => dictTab('k');
@@ -1978,7 +2048,7 @@ $('dictExport').onclick = () => { dictCleanup(); const K = DUI.tab === 'k';
 /* ---------- Metindeki öneriler ---------- */
 const SUG = { seg:null, x:null };
 function openSug(el, seg, x){
-  if (!x) return; SUG.seg = seg; SUG.x = x; SPL.w = null;
+  if (!x) return; SUG.seg = seg; SUG.x = x; SPL.w = null; CTX.x = null;
   const pop = $('sugPop'), wrong = shown(seg).slice(x.s, x.e);
   pop.innerHTML = `<div class="note">💡 Doğru kalıba benziyor · %${Math.round(x.score * 100)} benzer${x.k.grp ? ' · ' + esc(x.k.grp) : ''}${x.pos ? ` · kaydın ${x.k.yer === 'bas' ? 'başında' : 'sonunda'} olduğu için` : ''}</div>
     <div><s style="opacity:.7">${esc(wrong)}</s></div><div class="alt">→ ${esc(x.k.text)}</div>
@@ -1992,8 +2062,8 @@ function placePop(el){
   pop.style.top = Math.max(6, top) + 'px'; pop.style.left = Math.max(6, Math.min(b.left, innerWidth - pop.offsetWidth - 6)) + 'px';
 }
 const SPL = { w:null };
-async function openSpell(el, w){
-  SUG.x = null; SPL.w = w; const pop = $('sugPop');
+async function openSpell(el, w, nb){
+  SUG.x = null; SPL.w = w; CTX.x = null; const pop = $('sugPop');
   pop.innerHTML = `<div class="note">🔤 Türkçe sözlükte bulunamadı</div><div><s style="opacity:.7">${esc(w)}</s></div>
     <div class="cands" id="splList"><span class="note">Öneriler aranıyor…</span></div>
     <div class="row"><input id="splIn" placeholder="Doğrusunu yaz…" style="flex:1;min-width:140px"><button id="splAdd" class="primary">Düzelt</button></div>
@@ -2001,11 +2071,40 @@ async function openSpell(el, w){
     <div class="note">Bir öneriye ya da Düzelt'e basınca sözlüğe kural olarak eklenir; bu yanlış kelime her yerde düzelir.</div>`;
   placePop(el);
   const { dom, gen } = await Spell.suggest(w); if (SPL.w !== w || $('sugPop').hidden) return;
-  $('splList').innerHTML = dom.map(x => `<button class="splc" data-v="${esc(x)}" title="Senin sözlüğünden (kalıplar, kurallar, düzeltmelerin)">⭐ ${esc(x)}</button>`).join('')
-    + gen.map(x => `<button class="splc" data-v="${esc(x)}" title="Türkçe sözlükten">${esc(x)}</button>`).join('')
+  // Bağlamdan: önceki/sonraki kelimeye göre bu yerde sık geçen benzer kelimeler
+  const ctx = nb && (nb.p || nb.n) ? [...Ctx.cands(nb.p && nb.p.w, nb.n && nb.n.w)].map(([c, k]) => [c, Ctx.sim(c, w) + Math.min(0.3, Math.log(1 + k) / 10), k])
+    .filter(([c, sc]) => c !== w && sc >= 0.5).sort((a, b) => b[1] - a[1]).slice(0, 3) : [];
+  const seen = new Set(ctx.map(x => x[0]));
+  $('splList').innerHTML = ctx.map(([c, , k]) => `<button class="splc" data-v="${esc(c)}" title="Bu bağlamda kayıtlarında ${k} kez geçiyor">🧠 ${esc(c)}</button>`).join('')
+    + dom.filter(x => !seen.has(x)).map(x => `<button class="splc" data-v="${esc(x)}" title="Senin sözlüğünden (kalıplar, kurallar, düzeltmelerin)">⭐ ${esc(x)}</button>`).join('')
+    + gen.filter(x => !seen.has(x)).map(x => `<button class="splc" data-v="${esc(x)}" title="Türkçe sözlükten">${esc(x)}</button>`).join('')
     || '<span class="note">Benzer kelime bulunamadı. Doğrusunu aşağıya yazabilirsin.</span>';
   placePop(el);
 }
+const CTX = { x:null, nb:null };
+function openCtx(el, x, nb){
+  if (!x) return; SUG.x = null; SPL.w = null; CTX.x = x; CTX.nb = nb;
+  const pop = $('sugPop'), ph = nb.p ? `<b>${esc(nb.p.raw)}</b> ` : '', nh = nb.n ? ` <b>${esc(nb.n.raw)}</b>` : '';
+  pop.innerHTML = `<div class="note">🧠 Bağlama uymuyor: kayıtlarında bu yerde genelde başka bir kelime geçiyor (${x.k} kez)</div>
+    <div>${ph}<s style="opacity:.7">${esc(nb.x.raw)}</s>${nh}</div><div class="alt">→ ${ph}${esc(x.c)}${nh}</div>
+    <div class="row"><button class="primary" id="ctxOk" title="Bu kelime ikilisi sözlüğe düzeltme kuralı olarak eklenir">✔ Uygula</button>
+      <button id="ctxNo" title="Bu öneri bir daha gösterilmez">✖ Gösterme</button><span class="sp"></span><button id="sugX">Kapat</button></div>`;
+  placePop(el);
+}
+function ctxApply(){
+  const x = CTX.x, nb = CTX.nb; if (!x) return;
+  // Kelime Türkçede var olduğu için tek başına değil, yanındaki kelimeyle birlikte kural yapılır
+  const from = nb.p ? nb.p.raw + ' ' + nb.x.raw : nb.x.raw + ' ' + nb.n.raw, to = nb.p ? nb.p.raw + ' ' + x.c : x.c + ' ' + nb.n.raw;
+  const { add } = Dict.merge([Dict.mk(from, to, 'Bağlam', 'all')]);
+  $('sugPop').hidden = true; afterDictChange(); toast(add ? `"${from}" → "${to}" sözlüğe eklendi` : 'Sözlükteki kural güncellendi');
+}
+function renderCtxBtn(){
+  const b = $('ctxBtn'); if (!b) return; const on = Ctx.on(), m = on ? Ctx.model() : null;
+  b.classList.toggle('on', on);
+  b.textContent = !on ? '🧠 Bağlam (kapalı)' : m.total < Ctx.MIN ? '🧠 Bağlam (veri az)' : `🧠 Bağlam (${state.ctxTotal || 0})`;
+  b.title = on && m.total < Ctx.MIN ? 'Bağlamdan öğrenmek için daha fazla çevrilmiş kayıt gerekiyor' : 'Kayıtlarındaki metinlerden öğrenir: bu bağlamda genelde başka (benzer) bir kelime geçiyorsa mavi noktalı çizgiyle işaretler';
+}
+$('ctxBtn').onclick = () => { Ctx.setOn(!Ctx.on()); $('sugPop').hidden = true; renderTranscript(); };
 function spellFix(w, v){
   v = (v || '').trim(); if (!v) return;
   const { add } = Dict.merge([Dict.mk(w, v, 'Yazım', 'all')]);
@@ -2024,6 +2123,11 @@ $('spellBtn').onclick = () => {
 if (Spell.wanted() && !new URLSearchParams(location.search).has('nospell')) setTimeout(() => Spell.start(), 1500);
 $('sugPop').onclick = (e) => {
   if (e.target.id === 'sugX') { $('sugPop').hidden = true; return; }
+  if (CTX.x && !SUG.x && !SPL.w) {
+    if (e.target.id === 'ctxOk') ctxApply();
+    else if (e.target.id === 'ctxNo') { const x = CTX.x; Ctx.ign.add(`${x.p || ''}|${x.w}|${x.c}`); Ctx.saveIgn(); $('sugPop').hidden = true; renderTranscript(); }
+    return;
+  }
   if (SPL.w && !SUG.x) {
     const c = e.target.closest('.splc'); if (c) { spellFix(SPL.w, c.dataset.v); return; }
     if (e.target.id === 'splAdd') { spellFix(SPL.w, $('splIn').value); return; }
@@ -2038,7 +2142,7 @@ $('sugPop').onclick = (e) => {
     if (!x.k.ign.includes(x.win)) x.k.ign.push(x.win); Kalip.save(); $('sugPop').hidden = true; renderTranscript();
   } else if (e.target.id === 'sugX') $('sugPop').hidden = true;
 };
-document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug') && !e.target.closest('.spl')) $('sugPop').hidden = true; });
+document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug') && !e.target.closest('.spl') && !e.target.closest('.ctx')) $('sugPop').hidden = true; });
 $('sugPop').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'splIn') spellFix(SPL.w, e.target.value); if (e.key === 'Escape') $('sugPop').hidden = true; });
 $('transcript').addEventListener('scroll', () => { $('sugPop').hidden = true; });
 $('sugBtn').onclick = () => { state.showSug = !state.showSug; $('sugPop').hidden = true; renderTranscript(); };

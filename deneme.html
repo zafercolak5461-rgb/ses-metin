@@ -124,6 +124,11 @@
   @keyframes flash{0%,40%{background:rgba(250,204,21,.55);box-shadow:0 0 0 3px rgba(250,204,21,.55)}100%{background:transparent;box-shadow:none}}
   #spellBtn.on{border-color:var(--err);color:#fca5a5}
   #ctxBtn.on{border-color:#60a5fa;color:#93c5fd}
+  #nmBtn.on{border-color:#c084fc;color:#d8b4fe}
+  .seg .nm{text-decoration:underline dotted #c084fc;text-underline-offset:3px;text-decoration-thickness:3px;cursor:help;background:rgba(192,132,252,.14);border-radius:3px}
+  .seg .nm:hover{background:rgba(192,132,252,.25)}
+  #sugPop .names{line-height:1.7}
+  #sugPop .names b{color:#d8b4fe}
   .seg .ctx{text-decoration:underline dotted #60a5fa;text-underline-offset:3px;text-decoration-thickness:3px;cursor:help;background:rgba(96,165,250,.14);border-radius:3px}
   .seg .ctx:hover{background:rgba(96,165,250,.15)}
   .seg .spl{text-decoration:underline dotted var(--err);text-underline-offset:3px;text-decoration-thickness:3px;cursor:help;background:rgba(239,68,68,.12);border-radius:3px}
@@ -228,6 +233,7 @@
       <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını metne çevir (personel tarafına dokunmaz)">＋ Vatandaşı çevir</button>
       <span class="mk" id="sugGrp" hidden><button id="sugBtn" title="Sıradaki öneriye git (doğru kalıplara benzeyen yerler)">💡 Öneriler</button><button class="eye" id="sugEye" title="İşaretleri göster / gizle">👁</button></span>
       <span class="mk"><button id="spellBtn" title="Sıradaki Türkçede olmayan kelimeye git (ilk açılışta ≈14 MB sözlük bir kez indirilir)">🔤 Yazım denetimi</button><button class="eye" id="spellEye" title="İşaretleri göster / gizle">👁</button></span>
+      <span class="mk"><button id="nmBtn" title="Sıradaki farklı yazılmış isme git (bu kayıtta konuşulan isimlere göre)">👤 İsimler</button><button class="eye" id="nmEye" title="İşaretleri göster / gizle">👁</button></span>
       <span class="mk"><button id="ctxBtn" title="Sıradaki bağlama uymayan kelimeye git">🧠 Bağlam</button><button class="eye" id="ctxEye" title="İşaretleri göster / gizle">👁</button></span>
       <button id="dropBtn" hidden title="Programın elediği satırları (uydurma, tekrar, yankı, boş çıktı) soluk olarak göster">🔍 Elenenler</button>
       <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
@@ -472,7 +478,7 @@ const LocalEngine = {
   abort(){ this.ctrl && this.ctrl.abort(); }
 };
 let Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
-if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, Kalip, Spell, Ctx, learnFromEdit, shown, state }; });
+if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, Kalip, Spell, Ctx, Names, learnFromEdit, shown, state }; });
 
 /* =====================================================================
    2) SES İŞLEME: kanal ayırma, konuşma bulma (VAD), normalize, parçalama
@@ -868,7 +874,7 @@ const Dict = {
 };
 Dict.load();
 // Ekranda görünen metin: elle düzeltilmişse o, değilse sözlük uygulanmış hali (orijinal metin hep saklı)
-const shown = (s) => s.edit != null ? s.edit : Dict.apply(s.text, s.spk);
+const shown = (s) => s.edit != null ? s.edit : Names.apply(Dict.apply(s.text, s.spk), recOf(s));
 
 /* ---------- Doğru kalıplar: benzer (yanlış duyulmuş) yerleri öneri olarak işaretler ---------- */
 function levRatio(a, b){
@@ -1154,6 +1160,80 @@ const Ctx = {
 };
 Ctx.load();
 
+/* ---------- Çağrıya özel isim hafızası ----------
+   Her kayıtta konuşulan isimleri bulur ("… Hanım/Bey", isim sorusunun cevabı, "adım/ismim …", cümle ortasında büyük harf),
+   aynı ismin farklı yazımlarını işaretler. Düzeltme sadece o kayda uygulanır (başka çağrıdaki kişi başka isimde olabilir). */
+const segRec = new WeakMap();
+function recOf(s){ let r = segRec.get(s); if (r) return r; for (const x of state.recs) for (const y of x.segments || []) segRec.set(y, x); return segRec.get(s); }
+const Names = {
+  KEY:'ses-metin-isimler', cache:new Map(),
+  on(){ try { return localStorage.getItem(this.KEY) !== '0'; } catch { return true; } },
+  setOn(v){ try { localStorage.setItem(this.KEY, v ? '1' : '0'); } catch {} },
+  STOP: new Set('ben benim adım ismim soyadım soyadı adı ismi evet hayır tabi tabii tamam efendim hanım bey hanımefendi beyefendi kızım oğlum şey yani ama için çok bir iki merhaba alo iyi günler sağ olun teşekkür ederim allah türkiye tc t c'.split(' ')),
+  Q: /(isminiz|isminizi|adınız|adınızı|ad soyad|adı soyadı|isim soyisim|kiminle görüşüyorum|kimle görüşüyorum)/i,
+  base(s){ return s.edit != null ? s.edit : Dict.apply(s.text, s.spk); },
+  cap(w){ return w ? w[0].toLocaleUpperCase('tr') + w.slice(1) : w; },
+  // Kayıttaki isimler: [{ name, w, vars:Set, why }]
+  list(r){
+    if (!r || !r.segments) return [];
+    const key = r.id + ':' + r.segments.length + ':' + Dict.rules.length + ':' + JSON.stringify(r.nameFix || {});
+    const c0 = this.cache.get(r.id); if (c0 && c0.key === key) return c0.v;
+    const W = new Map(), why = new Map();
+    const add = (raw, k, reason) => { const w = Dict.norm(raw); if (w.length < 3 || /\d/.test(w) || this.STOP.has(w)) return;
+      W.set(w, (W.get(w) || 0) + k); if (!why.has(w) || k >= 3) why.set(w, reason); };
+    const segs = r.segments.slice().sort((a, b) => a.start - b.start);
+    segs.forEach((s, i) => {
+      const t = this.base(s), T = Ctx.toks(t);
+      T.forEach((x, j) => {
+        const nx = T[j + 1], pv = T[j - 1];
+        if (nx && /^(hanım|bey|hanımefendi|beyefendi)$/.test(nx.w) && !nx.brk) add(x.raw, 2, `"${x.raw} ${nx.raw}" diye hitap edilmiş`);
+        if (pv && /^(adım|ismim)$/.test(pv.w) && !x.brk) add(x.raw, 2, `"${pv.raw} ${x.raw}" denmiş`);
+        if (!x.brk && x.raw[0] !== x.raw[0].toLocaleLowerCase('tr') && x.raw.length > 2 && x.raw !== x.raw.toLocaleUpperCase('tr')) add(x.raw, 1, 'büyük harfle yazılmış');
+      });
+      // İsim sorusundan sonra karşı tarafın ilk sözleri (12 sn içinde)
+      if (this.Q.test(t)) for (const a of segs.slice(i + 1)) {
+        if (a.start - s.start > 12) break; if (s.spk && a.spk === s.spk) continue;
+        const got = Ctx.toks(this.base(a)).filter(x => x.w.length > 2 && !this.STOP.has(x.w) && !/\d/.test(x.w)).slice(0, 2);
+        for (const x of got) add(x.raw, 3, 'isim sorusunun cevabında söylenmiş');
+        if (got.length) break;
+      }
+    });
+    // Benzer yazımları tek isimde topla; en çok kanıtı olan yazım doğru kabul edilir
+    const out = [];
+    for (const [w, k] of [...W].sort((a, b) => b[1] - a[1])) {
+      const g = out.find(n => Ctx.sim(n.w, w) >= 0.65);
+      if (g) { g.vars.add(w); g.k += k; } else out.push({ w, k, vars:new Set(), why: why.get(w), name: this.cap(w) });
+    }
+    const v = out.filter(n => n.k >= 2);
+    this.cache.set(r.id, { key, v }); return v;
+  },
+  // Metinde kayıttaki isimlere benzeyen farklı yazımlar [{s,e,w,n}]
+  find(t, r){
+    if (!r || !t) return []; const L = this.list(r); if (!L.length) return [];
+    const T = Ctx.toks(t), ign = new Set(r.nameIgn || []), out = [];
+    T.forEach((x, j) => {
+      if (x.w.length < 3) return; const nx = T[j + 1];
+      const hitap = nx && !nx.brk && /^(hanım|bey|hanımefendi|beyefendi)$/.test(nx.w), capMid = !x.brk && x.raw[0] !== x.raw[0].toLocaleLowerCase('tr');
+      for (const n of L) {
+        if (x.w === n.w || same(x.w, n.w) || ign.has(x.w + '|' + n.w)) continue;
+        const known = n.vars.has(x.w), sm = Ctx.sim(x.w, n.w);
+        const capAny = x.raw[0] !== x.raw[0].toLocaleLowerCase('tr');   // cümle başında da olsa büyük harf: çok benziyorsa yeter
+        if ((known && sm >= 0.55) || (sm >= 0.6 && (hitap || capMid)) || (sm >= 0.75 && capAny)) { out.push({ s:x.s, e:x.e, w:x.w, n }); break; }
+      }
+    });
+    return out;
+  },
+  // Kayda özel düzeltmeler (yanlış yazım → isim), kelime sınırına duyarlı
+  apply(t, r){
+    const f = r && r.nameFix; if (!t || !f) return t;
+    for (const [from, to] of Object.entries(f)) {
+      const re = new RegExp(`(?<![\\p{L}\\p{N}])${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'giu');
+      t = t.replace(re, () => to);   // tam kelime; kesme işaretli ekler korunur: "Hidiye'nin" → "Hediye'nin"
+    }
+    return t;
+  }
+};
+
 // Elle düzeltmeden sözlük kuralı çıkar: kelime düzeyinde fark
 function learnFromEdit(before, after, spk){
   const A = before.split(/\s+/).filter(Boolean), B = after.split(/\s+/).filter(Boolean);
@@ -1420,7 +1500,7 @@ function renderTranscript(){
   const q = trLow($('search').value.trim());
   const dropRows = state.showDropped ? (r.dropped || []).filter(d => visibleSeg(d)).map(d => ({ t:d.start, html:
     `<div class="seg dropped"><span class="t">${fmt(d.start)}${d.spk ? `<span class="who ${d.spk}">${spkName[d.spk]}</span>` : ''}</span><span class="txt"><s>${esc(d.text)}</s> <span class="why">${esc(d.reason)}</span></span></div>` })) : [];
-  state.sugTotal = 0; state.splTotal = 0; state.ctxTotal = 0; if (state.showSug == null) state.showSug = true;
+  state.sugTotal = 0; state.splTotal = 0; state.ctxTotal = 0; state.nmTotal = 0; if (state.showSug == null) state.showSug = true;
   box.innerHTML = r.segments.map((s, i) => {
     if (!visibleSeg(s)) return '';
     const txt = shown(s);
@@ -1428,10 +1508,12 @@ function renderTranscript(){
     if (!q && s.edit == null) {
       const sg = state.showSug ? Kalip.suggest(txt, s.spk, { start:s.start, dur:r.duration }) : [];
       const sp = Spell.wanted() ? Spell.find(txt).filter(x => !sg.some(g => x.s < g.e && g.s < x.e)) : [];
-      const cx = Ctx.on() ? Ctx.find(txt).filter(x => ![...sg, ...sp].some(g => x.s < g.e && g.s < x.e)) : [];
-      state.sugTotal += sg.length; state.splTotal += sp.length; state.ctxTotal += cx.length;
+      const nm = Names.on() ? Names.find(txt, r).filter(x => ![...sg, ...sp].some(g => x.s < g.e && g.s < x.e)) : [];
+      const cx = Ctx.on() ? Ctx.find(txt).filter(x => ![...sg, ...sp, ...nm].some(g => x.s < g.e && g.s < x.e)) : [];
+      state.sugTotal += sg.length; state.splTotal += sp.length; state.ctxTotal += cx.length; state.nmTotal += nm.length;
       const marks = [...sg.map((x, n) => ({ s:x.s, e:x.e, h:`<span class="sug" data-n="${n}" title="Öneri: ${esc(x.k.text)}">` })),
                      ...sp.map(x => ({ s:x.s, e:x.e, h:`<span class="spl" data-w="${esc(x.w)}" data-s="${x.s}" title="Türkçe sözlükte bulunamadı">` })),
+                     ...nm.map(x => ({ s:x.s, e:x.e, h:`<span class="nm" data-s="${x.s}" title="Bu kayıttaki isim: ${esc(x.n.name)}">` })),
                      ...cx.map(x => ({ s:x.s, e:x.e, h:`<span class="ctx" data-s="${x.s}" title="Bu bağlamda genelde: ${esc(x.c)}">` }))].sort((a, b) => a.s - b.s);
       if (marks.length) { let o = '', k = 0; for (const x of marks) { o += esc(txt.slice(k, x.s)) + x.h + esc(txt.slice(x.s, x.e)) + '</span>'; k = x.e; } html = o + esc(txt.slice(k)); }
     }
@@ -1453,7 +1535,7 @@ function renderTranscript(){
   $('sugGrp').hidden = !Kalip.list.some(k => k.on);
   $('sugBtn').classList.toggle('on', !!state.showSug); $('sugEye').classList.toggle('off', !state.showSug);
   $('sugBtn').textContent = state.showSug ? `💡 Öneriler (${state.sugTotal})` : '💡 Öneriler (gizli)';
-  renderSpellBtn(); renderCtxBtn();
+  renderSpellBtn(); renderCtxBtn(); renderNmBtn();
   const ta = box.querySelector('.editor textarea, .teditor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
   markCurrentHit();
@@ -1751,7 +1833,7 @@ $('transcript').onclick = (e) => {
     if (e.target.closest('.te-save')) {
       const before = Dict.apply(seg.text, seg.spk), after = te.querySelector('textarea').value.replace(/\s+/g, ' ').trim();
       if (!after || after === before) delete seg.edit; else seg.edit = after;
-      state.tEditing = null; Spell._voc = null; Ctx.invalidate(); DB.put(r); renderTranscript(); runSearch(false);
+      state.tEditing = null; Spell._voc = null; Ctx.invalidate(); Names.cache.clear(); DB.put(r); renderTranscript(); runSearch(false);
       if (seg.edit != null) openLearn(learnFromEdit(before, after, seg.spk), r, seg);
       return;
     }
@@ -1772,6 +1854,8 @@ $('transcript').onclick = (e) => {
   }
   const spEl = e.target.closest('.spl');
   if (spEl) { const seg = active().segments[+spEl.closest('.seg').dataset.i]; openSpell(spEl, spEl.dataset.w, Ctx.around(shown(seg), +spEl.dataset.s)); return; }
+  const nmEl = e.target.closest('.nm');
+  if (nmEl) { const r = active(), seg = r.segments[+nmEl.closest('.seg').dataset.i]; openName(nmEl, r, Names.find(shown(seg), r).find(x => x.s === +nmEl.dataset.s)); return; }
   const cxEl = e.target.closest('.ctx');
   if (cxEl) { const seg = active().segments[+cxEl.closest('.seg').dataset.i], t = shown(seg); openCtx(cxEl, Ctx.find(t).find(x => x.s === +cxEl.dataset.s), Ctx.around(t, +cxEl.dataset.s)); return; }
   const sgEl = e.target.closest('.sug');
@@ -1998,7 +2082,7 @@ function dictCleanup(){
   const n = Dict.rules.length; Dict.rules = Dict.rules.filter(r => Dict.norm(r.from) || (r.to || '').trim()); if (Dict.rules.length !== n) Dict.save();
   const m = Kalip.list.length; Kalip.list = Kalip.list.filter(k => Dict.norm(k.text)); if (Kalip.list.length !== m) Kalip.save();
 }
-function afterDictChange(){ Kalip.cache.clear(); Spell._voc = null; Ctx.invalidate(); renderList(); renderTranscript(); runSearch(false); }
+function afterDictChange(){ Kalip.cache.clear(); Spell._voc = null; Ctx.invalidate(); Names.cache.clear(); renderList(); renderTranscript(); runSearch(false); }
 function dictTab(t){ DUI.tab = t; DUI.fresh.clear(); $('dictQ').value = ''; $('dictBulk').hidden = true; dictRefreshUsage(); dictRender(); }
 $('tabR').onclick = () => dictTab('r');
 $('tabK').onclick = () => dictTab('k');
@@ -2055,7 +2139,7 @@ $('dictExport').onclick = () => { dictCleanup(); const K = DUI.tab === 'k';
 /* ---------- Metindeki öneriler ---------- */
 const SUG = { seg:null, x:null };
 function openSug(el, seg, x){
-  if (!x) return; SUG.seg = seg; SUG.x = x; SPL.w = null; CTX.x = null;
+  if (!x) return; SUG.seg = seg; SUG.x = x; SPL.w = null; CTX.x = null; NM.x = null;
   const pop = $('sugPop'), wrong = shown(seg).slice(x.s, x.e);
   pop.innerHTML = `<div class="note">💡 Doğru kalıba benziyor · %${Math.round(x.score * 100)} benzer${x.k.grp ? ' · ' + esc(x.k.grp) : ''}${x.pos ? ` · kaydın ${x.k.yer === 'bas' ? 'başında' : 'sonunda'} olduğu için` : ''}</div>
     <div><s style="opacity:.7">${esc(wrong)}</s></div><div class="alt">→ ${esc(x.k.text)}</div>
@@ -2070,7 +2154,7 @@ function placePop(el){
 }
 const SPL = { w:null };
 async function openSpell(el, w, nb){
-  SUG.x = null; SPL.w = w; CTX.x = null; const pop = $('sugPop');
+  SUG.x = null; SPL.w = w; CTX.x = null; NM.x = null; const pop = $('sugPop');
   pop.innerHTML = `<div class="note">🔤 Türkçe sözlükte bulunamadı</div><div><s style="opacity:.7">${esc(w)}</s></div>
     <div class="cands" id="splList"><span class="note">Öneriler aranıyor…</span></div>
     <div class="row"><input id="splIn" placeholder="Doğrusunu yaz…" style="flex:1;min-width:140px"><button id="splAdd" class="primary">Düzelt</button></div>
@@ -2088,9 +2172,29 @@ async function openSpell(el, w, nb){
     || '<span class="note">Benzer kelime bulunamadı. Doğrusunu aşağıya yazabilirsin.</span>';
   placePop(el);
 }
+const NM = { x:null, r:null };
+function openName(el, r, x){
+  if (!x) return; SUG.x = null; SPL.w = null; CTX.x = null; NM.x = x; NM.r = r;
+  const pop = $('sugPop'), all = Names.list(r), fixes = Object.entries(r.nameFix || {});
+  pop.innerHTML = `<div class="note">👤 Bu kayıtta konuşulan bir isme benziyor · ${esc(x.n.why || '')}</div>
+    <div><s style="opacity:.7">${esc(el.textContent)}</s></div><div class="alt">→ ${esc(x.n.name)}</div>
+    <div class="row"><button class="primary" id="nmOk" title="Bu yazım bu kayıttaki her yerde düzelir; diğer kayıtlara ve sözlüğe dokunulmaz">✔ Bu kayıtta düzelt</button>
+      <button id="nmNo" title="Bu öneri bu kayıtta bir daha gösterilmez">✖ Gösterme</button><span class="sp"></span><button id="sugX">Kapat</button></div>
+    <div class="names note">Bu kayıttaki isimler: ${all.map(n => `<b>${esc(n.name)}</b>`).join(', ')}</div>
+    ${fixes.length ? `<div class="names note">Bu kayıtta yapılan isim düzeltmeleri: ${fixes.map(([f, t]) => `${esc(f)} → ${esc(t)} <button class="nmUndo" data-f="${esc(f)}" title="Geri al">↺</button>`).join(' ')}</div>` : ''}`;
+  placePop(el);
+}
+function renderNmBtn(){
+  const b = $('nmBtn'); if (!b) return; const on = Names.on(), r = active(), L = r && r.status === 'hazir' ? Names.list(r) : [];
+  b.classList.toggle('on', on); $('nmEye').classList.toggle('off', !on);
+  b.textContent = !on ? '👤 İsimler (gizli)' : `👤 İsimler (${state.nmTotal || 0})`;
+  b.title = L.length ? `Bu kayıtta bulunan isimler: ${L.map(n => n.name).join(', ')} — sıradaki farklı yazıma git` : 'Bu kayıtta isim bulunamadı';
+}
+$('nmBtn').onclick = () => { if (!Names.on()) { Names.setOn(true); renderTranscript(); } navMark('nm'); };
+$('nmEye').onclick = () => { Names.setOn(!Names.on()); $('sugPop').hidden = true; renderTranscript(); };
 const CTX = { x:null, nb:null };
 function openCtx(el, x, nb){
-  if (!x) return; SUG.x = null; SPL.w = null; CTX.x = x; CTX.nb = nb;
+  if (!x) return; SUG.x = null; SPL.w = null; NM.x = null; CTX.x = x; CTX.nb = nb;
   const pop = $('sugPop'), ph = nb.p ? `<b>${esc(nb.p.raw)}</b> ` : '', nh = nb.n ? ` <b>${esc(nb.n.raw)}</b>` : '';
   pop.innerHTML = `<div class="note">🧠 Bağlama uymuyor: kayıtlarında bu yerde genelde başka bir kelime geçiyor (${x.k} kez)</div>
     <div>${ph}<s style="opacity:.7">${esc(nb.x.raw)}</s>${nh}</div><div class="alt">→ ${ph}${esc(x.c)}${nh}</div>
@@ -2146,6 +2250,14 @@ $('spellEye').onclick = () => { if (Spell.wanted()) { Spell.setWanted(false); $(
 if (Spell.wanted() && !new URLSearchParams(location.search).has('nospell')) setTimeout(() => Spell.start(), 1500);
 $('sugPop').onclick = (e) => {
   if (e.target.id === 'sugX') { $('sugPop').hidden = true; return; }
+  if (NM.x && !SUG.x && !SPL.w && !CTX.x) {
+    const r = NM.r, x = NM.x, u = e.target.closest('.nmUndo');
+    if (e.target.id === 'nmOk') { r.nameFix = { ...(r.nameFix || {}), [x.w]: x.n.name }; toast(`Bu kayıtta "${x.w}" → "${x.n.name}" düzeltildi`); }
+    else if (e.target.id === 'nmNo') { r.nameIgn = [...(r.nameIgn || []), x.w + '|' + x.n.w]; }
+    else if (u) { const f = { ...(r.nameFix || {}) }; delete f[u.dataset.f]; r.nameFix = f; toast('İsim düzeltmesi geri alındı'); }
+    else return;
+    Names.cache.delete(r.id); DB.put(r); $('sugPop').hidden = true; renderTranscript(); runSearch(false); return;
+  }
   if (CTX.x && !SUG.x && !SPL.w) {
     if (e.target.id === 'ctxOk') ctxApply();
     else if (e.target.id === 'ctxNo') { const x = CTX.x; Ctx.ign.add(`${x.p || ''}|${x.w}|${x.c}`); Ctx.saveIgn(); $('sugPop').hidden = true; renderTranscript(); }
@@ -2165,7 +2277,7 @@ $('sugPop').onclick = (e) => {
     if (!x.k.ign.includes(x.win)) x.k.ign.push(x.win); Kalip.save(); $('sugPop').hidden = true; renderTranscript();
   } else if (e.target.id === 'sugX') $('sugPop').hidden = true;
 };
-document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug') && !e.target.closest('.spl') && !e.target.closest('.ctx')) $('sugPop').hidden = true; });
+document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug') && !e.target.closest('.spl') && !e.target.closest('.ctx') && !e.target.closest('.nm')) $('sugPop').hidden = true; });
 $('sugPop').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'splIn') spellFix(SPL.w, e.target.value); if (e.key === 'Escape') $('sugPop').hidden = true; });
 $('transcript').addEventListener('scroll', () => { $('sugPop').hidden = true; });
 $('sugBtn').onclick = () => { if (!state.showSug) { state.showSug = true; renderTranscript(); } navMark('sug'); };

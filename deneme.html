@@ -115,6 +115,13 @@
   #sugPop[hidden]{display:none}
   #sugPop .alt{font-size:15px;color:#86efac}
   #sugBtn.on{border-color:var(--warn);color:var(--warn)}
+  #spellBtn.on{border-color:var(--err);color:#fca5a5}
+  .seg .spl{text-decoration:underline dotted var(--err);text-underline-offset:3px;text-decoration-thickness:2px;cursor:help}
+  .seg .spl:hover{background:rgba(239,68,68,.15)}
+  #sugPop .cands{display:flex;flex-wrap:wrap;gap:6px}
+  #sugPop .cands button{padding:4px 10px}
+  #wordList{min-height:260px}
+  #dictTools[hidden],#dictWrap[hidden],#wordBox[hidden]{display:none}
   .seg.dropped{opacity:.55;cursor:default}
   .seg.dropped:hover{background:none}
   .seg.dropped .why{font-size:11px;color:var(--err);border:1px solid var(--err);border-radius:4px;padding:0 4px;margin-left:6px}
@@ -209,6 +216,7 @@
       <button id="txtBtn" disabled>.txt</button>
       <button id="srtBtn" disabled>.srt</button>
       <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını metne çevir (personel tarafına dokunmaz)">＋ Vatandaşı çevir</button>
+      <button id="spellBtn" title="Türkçe sözlükte olmayan kelimeleri kırmızı noktalı çizgiyle işaretle (ilk açılışta ≈14 MB sözlük bir kez indirilir)">🔤 Yazım denetimi</button>
       <button id="sugBtn" hidden title="Doğru kalıplara benzeyen yerleri (💡 sözlük) altı kesik çizgiyle işaretle">💡 Öneriler</button>
       <button id="dropBtn" hidden title="Programın elediği satırları (uydurma, tekrar, yankı, boş çıktı) soluk olarak göster">🔍 Elenenler</button>
       <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
@@ -262,9 +270,9 @@
 <div class="modal" id="dictPanel" hidden>
   <div class="card wide">
     <div class="row"><h2>📖 Düzeltme Sözlüğü</h2><span class="note" id="dictInfo"></span><span class="sp"></span><button id="dictClose">✕</button></div>
-    <div class="row tabs"><button id="tabR" class="on" title="Programın yazdığı yanlış → doğrusu">✎ Düzeltme kuralları</button><button id="tabK" title="Doğru kalıplar: benzeyen yerler öneri olarak işaretlenir">💡 Doğru kalıplar</button>
+    <div class="row tabs"><button id="tabR" class="on" title="Programın yazdığı yanlış → doğrusu">✎ Düzeltme kuralları</button><button id="tabK" title="Doğru kalıplar: benzeyen yerler öneri olarak işaretlenir">💡 Doğru kalıplar</button><button id="tabW" title="Doğru kabul ettiğin kelimeler: yazım denetimi bunları işaretlemez">🔤 Kelime listem</button>
       <span class="sp"></span><label class="note" id="kLevelBox" hidden>Öneri hassasiyeti <select id="kLevel"><option value="az">Az (sadece çok benzeyenler)</option><option value="orta">Orta</option><option value="cok">Çok (daha fazla öneri)</option></select></label></div>
-    <div class="row">
+    <div class="row" id="dictTools">
       <input id="dictQ" placeholder="Sözlükte ara…" style="flex:1;min-width:160px">
       <select id="dictGrp" title="Gruba göre süz"></select>
       <button id="dictAdd" class="primary">＋ Yeni kural</button>
@@ -279,7 +287,10 @@
       <div class="row"><span class="sp"></span><button id="dictBulkCancel">Vazgeç</button><button id="dictBulkAdd" class="primary">Ekle</button></div>
     </div>
     <datalist id="dictGrps"></datalist>
-    <div class="dtwrap"><table class="dt"><thead id="dictHead"></thead>
+    <div id="wordBox" class="spk" hidden>
+      <textarea id="wordList" spellcheck="false" placeholder="Her satıra bir kelime"></textarea>
+    </div>
+    <div class="dtwrap" id="dictWrap"><table class="dt"><thead id="dictHead"></thead>
       <tbody id="dictBody"></tbody></table></div>
     <div class="note" id="dictNote">Kurallar tam kelime olarak eşleşir; aradaki virgül/nokta farkını önemsemez. Uzun kalıp kısa olandan önce uygulanır. Orijinal metin hiç silinmez; kuralı kapatınca eski hali geri gelir.
       Bir cümledeki hatayı en kolay yoldan eklemek için metinde satırın yanındaki <b>✎</b> düğmesini kullan.</div>
@@ -450,7 +461,7 @@ const LocalEngine = {
   abort(){ this.ctrl && this.ctrl.abort(); }
 };
 let Engine = new URLSearchParams(location.search).has('test') ? TestEngine : BrowserWhisperEngine;
-if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, Kalip, learnFromEdit, shown }; });
+if (new URLSearchParams(location.search).has('test')) setTimeout(() => { window.__dsp = { cleanStereo, decodeChannels, frameRms, vad, makeInput, Dict, Kalip, Spell, learnFromEdit, shown }; });
 
 /* =====================================================================
    2) SES İŞLEME: kanal ayırma, konuşma bulma (VAD), normalize, parçalama
@@ -943,6 +954,133 @@ const Kalip = {
 };
 Kalip.load();
 
+/* ---------- Türkçe kelime denetimi (TDD hunspell-tr, MPL-2.0) ----------
+   Sözlük bir kez indirilir (≈14 MB), tarayıcı önbelleğinde saklanır; denetim ayrı bir işçide (worker) yapılır. */
+const SPELL_BASE = 'https://raw.githubusercontent.com/tdd-ai/hunspell-tr/7302eca5f3652fe7ae3d3ec06c44697c97342b4e/';
+const SPELL_WORKER = `
+const BASE = ${JSON.stringify(SPELL_BASE)}, CACHE = 'ses-metin-tr-sozluk-v1';
+let D = null, SUF = null;
+const low = (s) => s.toLocaleLowerCase('tr');
+async function get(name, approx, report){
+  const url = BASE + name;
+  let c = null; try { c = await caches.open(CACHE); const hit = await c.match(url); if (hit) return await hit.text(); } catch {}
+  const r = await fetch(url); if (!r.ok) throw new Error('Sözlük indirilemedi (' + r.status + ')');
+  const rd = r.body.getReader(), dec = new TextDecoder(), parts = []; let got = 0;
+  for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(dec.decode(value, { stream:true })); got += value.length; report && report(got / approx); }
+  parts.push(dec.decode()); const text = parts.join('');
+  try { c && await c.put(url, new Response(text)); } catch {}
+  return text;
+}
+// Kelime geçerliyse kökünün ek sayısı (kullanım sıklığına yaklaşık bir ölçü), değilse 0
+function score(w){
+  let best = 0; const d = D.get(w); if (d !== undefined) best = d.length + 1;
+  for (let i = 1; i < w.length; i++) { const f = SUF.get(w.slice(i)); if (f === undefined) continue; const fl = D.get(w.slice(0, i)); if (fl && fl.includes(',' + f + ',')) best = Math.max(best, fl.length); }
+  return best;
+}
+const ok = (w) => score(w) > 0;
+const ALPHA = 'abcçdefgğhıijklmnoöprsştuüvyz';
+function edits(w){
+  const out = new Set();
+  for (let i = 0; i <= w.length; i++) {
+    if (i < w.length) out.add(w.slice(0, i) + w.slice(i + 1));                                   // harf eksilt
+    if (i < w.length - 1) out.add(w.slice(0, i) + w[i + 1] + w[i] + w.slice(i + 2));              // yer değiştir
+    for (const ch of ALPHA) { if (i < w.length) out.add(w.slice(0, i) + ch + w.slice(i + 1)); out.add(w.slice(0, i) + ch + w.slice(i)); }   // değiştir / ekle
+  }
+  out.delete(w); return [...out];
+}
+function sugg(w){
+  const res = [];
+  for (const e of edits(w)) { if (e.length < 2) continue; const sc = score(e); if (sc) res.push([e, sc]); }
+  for (let i = 2; i <= w.length - 2; i++) { const a = w.slice(0, i), b = w.slice(i), sa = score(a), sb = score(b); if (sa && sb && a.length > 2 && b.length > 2) res.push([a + ' ' + b, Math.min(sa, sb)]); }   // bitişik yazılmış iki kelime
+  return res.sort((x, y) => y[1] - x[1]).slice(0, 6).map(x => x[0]);
+}
+self.onmessage = async (e) => {
+  const m = e.data;
+  try {
+    if (m.type === 'load') {
+      if (!D) {
+        const aff = await get('tr_TR.aff', 2283891);
+        const dic = await get('tr_TR.dic', 36136702, (p) => self.postMessage({ type:'progress', p }));
+        SUF = new Map(); for (const l of aff.split('\\n')) { const p = l.split(' '); if (p.length === 5 && p[0] === 'SFX') SUF.set(p[3], p[1]); }
+        D = new Map(); const L = dic.split('\\n');
+        for (let i = 1; i < L.length; i++) { const l = L[i]; if (!l) continue; const k = l.indexOf('/'); if (k < 0) D.set(l.trim(), ''); else D.set(l.slice(0, k), ',' + l.slice(k + 1).trim() + ','); }
+      }
+      self.postMessage({ type:'ready', id:m.id });
+    }
+    if (m.type === 'check') self.postMessage({ type:'checked', id:m.id, bad: m.words.filter(w => !ok(low(w))) });
+    if (m.type === 'sugg') self.postMessage({ type:'sugg', id:m.id, list: sugg(low(m.word)) });
+  } catch (err) { self.postMessage({ type:'error', id:m.id, message:String(err && err.message || err) }); }
+};`;
+const harm = (w) => w.replace(/[ıiuü]/g, 'I').replace(/[ae]/g, 'A').replace(/[oö]/g, 'O');
+const Spell = {
+  KEY:'ses-metin-yazim', WKEY:'ses-metin-kelimelerim',
+  state:'off', pct:0, err:'', w:null, seq:0, pend:new Map(), known:new Map(), queue:new Set(), mine:new Set(), _voc:null,
+  load(){ try { this.mine = new Set(JSON.parse(localStorage.getItem(this.WKEY) || '[]')); } catch {} },
+  saveMine(){ this._voc = null; try { localStorage.setItem(this.WKEY, JSON.stringify([...this.mine].sort((a, b) => a.localeCompare(b, 'tr')))); } catch {} },
+  wanted(){ try { return localStorage.getItem(this.KEY) === '1'; } catch { return false; } },
+  setWanted(v){ try { localStorage.setItem(this.KEY, v ? '1' : ''); } catch {} },
+  _call(msg){ const id = ++this.seq; return new Promise((res, rej) => { this.pend.set(id, { res, rej }); this.w.postMessage({ ...msg, id }); }); },
+  start(){
+    if (this.state === 'loading' || this.state === 'ready') return;
+    this.state = 'loading'; this.pct = 0; this.err = ''; renderSpellBtn();
+    this.w = new Worker(URL.createObjectURL(new Blob([SPELL_WORKER], { type:'text/javascript' })));
+    this.w.onmessage = (e) => { const m = e.data;
+      if (m.type === 'progress') { const p = Math.min(99, Math.round(m.p * 100)); if (p !== this.pct) { this.pct = p; renderSpellBtn(); } return; }
+      const p = this.pend.get(m.id); if (!p) return; this.pend.delete(m.id);
+      m.type === 'error' ? p.rej(new Error(m.message)) : p.res(m); };
+    this.w.onerror = (e) => { this.state = 'error'; this.err = e.message || 'işçi başlatılamadı'; renderSpellBtn(); };
+    this._call({ type:'load' }).then(() => { this.state = 'ready'; renderSpellBtn(); renderTranscript(); })
+      .catch((e) => { this.state = 'error'; this.err = e.message; renderSpellBtn(); toast('Türkçe sözlük yüklenemedi: ' + e.message); });
+  },
+  // Kendi alanının kelimeleri: kalıplar, düzeltme kurallarının doğru halleri, kelime listen, elle düzelttiğin satırlar
+  vocab(){
+    if (this._voc) return this._voc;
+    const v = new Map(), add = (t, wgt) => { for (const w of Dict.norm(t).split(' ')) if (w.length > 2) v.set(w, (v.get(w) || 0) + wgt); };
+    for (const k of Kalip.list) add(k.text, 3);
+    for (const r of Dict.rules) add(r.to, 2);
+    for (const w of this.mine) add(w, 2);
+    for (const r of state.recs) for (const s of r.segments || []) if (s.edit != null) add(s.edit, 1);
+    return this._voc = v;
+  },
+  // Denetlenecek kelime mi? (isim, kısaltma, sayı ve kendi alan kelimelerin denetlenmez)
+  candidate(word, sentenceStart){
+    if (/\d/.test(word)) return null;
+    let w = word.split(/['’]/)[0]; if (w.length < 3) return null;
+    if (w === w.toLocaleUpperCase('tr')) return null;                                    // TC, SGK gibi kısaltmalar
+    if (!sentenceStart && w[0] !== w[0].toLocaleLowerCase('tr')) return null;           // cümle ortasında büyük harf: özel isim
+    const l = trLow(w); if (this.mine.has(l) || this.vocab().has(l)) return null;
+    return l;
+  },
+  // Metindeki bilinmeyen kelimeler [{s,e,w}]; henüz denetlenmemiş kelimeler sıraya alınır, sonuç gelince ekran yenilenir
+  find(t){
+    if (this.state !== 'ready' || !t) return [];
+    const out = []; let prevEnd = -1;
+    for (const m of t.matchAll(/[\p{L}\p{N}'’]+/gu)) {
+      const first = prevEnd < 0, before = t.slice(Math.max(0, prevEnd), m.index); prevEnd = m.index + m[0].length;
+      const w = this.candidate(m[0], first || /[.?!…]["')\s]*$/.test(before)); if (!w) continue;
+      const k = this.known.get(w);
+      if (k === undefined) this.queue.add(w); else if (k === false) out.push({ s:m.index, e:m.index + m[0].split(/['’]/)[0].length, w });
+    }
+    if (this.queue.size && !this._t) this._t = setTimeout(() => this.flush(), 30);
+    return out;
+  },
+  async flush(){
+    this._t = null; const words = [...this.queue]; this.queue.clear(); if (!words.length) return;
+    try { const r = await this._call({ type:'check', words }); const bad = new Set(r.bad);
+      for (const w of words) this.known.set(w, !bad.has(w));
+      if (bad.size) renderTranscript(); else renderSpellBtn(); } catch {}
+  },
+  async suggest(w){
+    // Türkçede yanlış duyma çoğunlukla sesli harflerde olur: ünlüleri gruplayıp da karşılaştır (rümenizi ~ numaranızı)
+    const hw = harm(w), v = this.vocab(), dom = [...v.keys()].map(x => [x, Math.max(levRatio(x, w), levRatio(harm(x), hw) - 0.08) + Math.min(0.06, v.get(x) * 0.01)])
+      .filter(([, s]) => s >= 0.55).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([x]) => x);
+    let gen = []; try { gen = (await this._call({ type:'sugg', word:w })).list; } catch {}
+    gen = gen.filter(x => !dom.includes(x)).slice(0, 5);
+    return { dom, gen };
+  }
+};
+Spell.load();
+
 // Elle düzeltmeden sözlük kuralı çıkar: kelime düzeyinde fark
 function learnFromEdit(before, after, spk){
   const A = before.split(/\s+/).filter(Boolean), B = after.split(/\s+/).filter(Boolean);
@@ -1209,16 +1347,18 @@ function renderTranscript(){
   const q = trLow($('search').value.trim());
   const dropRows = state.showDropped ? (r.dropped || []).filter(d => visibleSeg(d)).map(d => ({ t:d.start, html:
     `<div class="seg dropped"><span class="t">${fmt(d.start)}${d.spk ? `<span class="who ${d.spk}">${spkName[d.spk]}</span>` : ''}</span><span class="txt"><s>${esc(d.text)}</s> <span class="why">${esc(d.reason)}</span></span></div>` })) : [];
-  state.sugTotal = 0; if (state.showSug == null) state.showSug = true;
+  state.sugTotal = 0; state.splTotal = 0; if (state.showSug == null) state.showSug = true;
   box.innerHTML = r.segments.map((s, i) => {
     if (!visibleSeg(s)) return '';
     const txt = shown(s);
     let html = esc(txt), hit = true;
-    if (!q && state.showSug && s.edit == null) {
-      const sg = Kalip.suggest(txt, s.spk, { start:s.start, dur:r.duration }); state.sugTotal += sg.length;
-      if (sg.length) { let o = '', k = 0;
-        sg.forEach((x, n) => { o += esc(txt.slice(k, x.s)) + `<span class="sug" data-n="${n}" title="Öneri: ${esc(x.k.text)}">${esc(txt.slice(x.s, x.e))}</span>`; k = x.e; });
-        html = o + esc(txt.slice(k)); }
+    if (!q && s.edit == null) {
+      const sg = state.showSug ? Kalip.suggest(txt, s.spk, { start:s.start, dur:r.duration }) : [];
+      const sp = Spell.wanted() ? Spell.find(txt).filter(x => !sg.some(g => x.s < g.e && g.s < x.e)) : [];
+      state.sugTotal += sg.length; state.splTotal += sp.length;
+      const marks = [...sg.map((x, n) => ({ s:x.s, e:x.e, h:`<span class="sug" data-n="${n}" title="Öneri: ${esc(x.k.text)}">` })),
+                     ...sp.map(x => ({ s:x.s, e:x.e, h:`<span class="spl" data-w="${esc(x.w)}" title="Türkçe sözlükte bulunamadı">` }))].sort((a, b) => a.s - b.s);
+      if (marks.length) { let o = '', k = 0; for (const x of marks) { o += esc(txt.slice(k, x.s)) + x.h + esc(txt.slice(x.s, x.e)) + '</span>'; k = x.e; } html = o + esc(txt.slice(k)); }
     }
     if (q) { const low = trLow(txt); hit = low.includes(q);
       if (hit) { let o = '', k = 0, j; while ((j = low.indexOf(q, k)) >= 0) { o += esc(txt.slice(k, j)) + '<mark>' + esc(txt.slice(j, j + q.length)) + '</mark>'; k = j + q.length; } html = o + esc(txt.slice(k)); } }
@@ -1238,6 +1378,7 @@ function renderTranscript(){
   $('sugBtn').hidden = !Kalip.list.some(k => k.on);
   $('sugBtn').classList.toggle('on', !!state.showSug);
   $('sugBtn').textContent = state.showSug ? `💡 Öneriler (${state.sugTotal})` : '💡 Öneriler (kapalı)';
+  renderSpellBtn();
   const ta = box.querySelector('.editor textarea, .teditor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
   markCurrentHit();
@@ -1535,7 +1676,7 @@ $('transcript').onclick = (e) => {
     if (e.target.closest('.te-save')) {
       const before = Dict.apply(seg.text, seg.spk), after = te.querySelector('textarea').value.replace(/\s+/g, ' ').trim();
       if (!after || after === before) delete seg.edit; else seg.edit = after;
-      state.tEditing = null; DB.put(r); renderTranscript(); runSearch(false);
+      state.tEditing = null; Spell._voc = null; DB.put(r); renderTranscript(); runSearch(false);
       if (seg.edit != null) openLearn(learnFromEdit(before, after, seg.spk), r, seg);
       return;
     }
@@ -1554,6 +1695,8 @@ $('transcript').onclick = (e) => {
     if (Rec.active()) Rec.stop();
     state.editing = null; DB.put(r); renderTranscript(); return;
   }
+  const spEl = e.target.closest('.spl');
+  if (spEl) { openSpell(spEl, spEl.dataset.w); return; }
   const sgEl = e.target.closest('.sug');
   if (sgEl) { const si = +sgEl.closest('.seg').dataset.i, seg = active().segments[si]; openSug(sgEl, seg, Kalip.suggest(shown(seg), seg.spk, { start:seg.start, dur:active().duration })[+sgEl.dataset.n]); return; }
   const s = e.target.closest('.seg'); if (!s || s.dataset.i == null) return;   // elenen satırlar tıklanmaz
@@ -1719,8 +1862,18 @@ const DUI = { dirty:false, usage:new Map(), fresh:new Set(), tab:'r' };
 const spkOpts = (v) => [['all','Herkes'],['P','Personel'],['V','Vatandaş']].map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${t}</option>`).join('');
 const dictGroups = () => [...new Set([...Dict.rules.map(r => r.grp), ...Kalip.list.map(k => k.grp)].map(x => (x || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
 const curList = () => DUI.tab === 'r' ? Dict.rules : Kalip.list;
-function dictRefreshUsage(){ DUI.usage = DUI.tab === 'r' ? Dict.usage(state.recs) : Kalip.usage(state.recs); }
+function dictRefreshUsage(){ DUI.usage = DUI.tab === 'r' ? Dict.usage(state.recs) : DUI.tab === 'k' ? Kalip.usage(state.recs) : new Map(); }
 function dictRender(){
+  const W = DUI.tab === 'w';
+  $('tabW').classList.toggle('on', W); $('dictTools').hidden = W; $('dictWrap').hidden = W; $('wordBox').hidden = !W; if (W) $('dictBulk').hidden = true;
+  if (W) {
+    $('tabR').classList.remove('on'); $('tabK').classList.remove('on'); $('kLevelBox').hidden = true;
+    $('wordList').value = [...Spell.mine].sort((a, b) => a.localeCompare(b, 'tr')).join('\n');
+    $('dictInfo').textContent = `${Spell.mine.size} kelime`;
+    $('dictNote').innerHTML = `Yazım denetiminde <b>✔ Doğru, listeme ekle</b> dediğin kelimeler (isimler, yöresel kelimeler, terimler) burada durur ve bir daha işaretlenmez. Yanlışlıkla eklediğin bir kelimeyi buradan silebilirsin; her satıra bir kelime.
+      Kalıplardaki ve düzeltme kurallarındaki kelimeler zaten doğru sayılır, buraya eklemene gerek yok.`;
+    return;
+  }
   const K = DUI.tab === 'k';
   $('tabR').classList.toggle('on', !K); $('tabK').classList.toggle('on', K); $('kLevelBox').hidden = !K; $('kLevel').value = Kalip.level;
   $('dictAdd').textContent = K ? '＋ Yeni kalıp' : '＋ Yeni kural';
@@ -1768,10 +1921,12 @@ function dictCleanup(){
   const n = Dict.rules.length; Dict.rules = Dict.rules.filter(r => Dict.norm(r.from) || (r.to || '').trim()); if (Dict.rules.length !== n) Dict.save();
   const m = Kalip.list.length; Kalip.list = Kalip.list.filter(k => Dict.norm(k.text)); if (Kalip.list.length !== m) Kalip.save();
 }
-function afterDictChange(){ Kalip.cache.clear(); renderList(); renderTranscript(); runSearch(false); }
+function afterDictChange(){ Kalip.cache.clear(); Spell._voc = null; renderList(); renderTranscript(); runSearch(false); }
 function dictTab(t){ DUI.tab = t; DUI.fresh.clear(); $('dictQ').value = ''; $('dictBulk').hidden = true; dictRefreshUsage(); dictRender(); }
 $('tabR').onclick = () => dictTab('r');
 $('tabK').onclick = () => dictTab('k');
+$('tabW').onclick = () => dictTab('w');
+$('wordList').onchange = () => { Spell.mine = new Set($('wordList').value.split(/\r?\n/).map(x => trLow(x.trim())).filter(Boolean)); Spell.saveMine(); DUI.dirty = true; $('dictInfo').textContent = `${Spell.mine.size} kelime`; };
 $('kLevel').onchange = () => { Kalip.level = $('kLevel').value; Kalip.save(); DUI.dirty = true; dictRefreshUsage(); dictRender(); };
 $('dictOpen').onclick = () => { $('dictPanel').hidden = false; dictTab(DUI.tab); $('dictQ').focus(); };
 $('dictClose').onclick = () => { $('dictPanel').hidden = true; dictCleanup(); if (DUI.dirty) { DUI.dirty = false; afterDictChange(); toast('Sözlük tüm kayıtlara uygulandı'); } };
@@ -1823,17 +1978,58 @@ $('dictExport').onclick = () => { dictCleanup(); const K = DUI.tab === 'k';
 /* ---------- Metindeki öneriler ---------- */
 const SUG = { seg:null, x:null };
 function openSug(el, seg, x){
-  if (!x) return; SUG.seg = seg; SUG.x = x;
+  if (!x) return; SUG.seg = seg; SUG.x = x; SPL.w = null;
   const pop = $('sugPop'), wrong = shown(seg).slice(x.s, x.e);
   pop.innerHTML = `<div class="note">💡 Doğru kalıba benziyor · %${Math.round(x.score * 100)} benzer${x.k.grp ? ' · ' + esc(x.k.grp) : ''}${x.pos ? ` · kaydın ${x.k.yer === 'bas' ? 'başında' : 'sonunda'} olduğu için` : ''}</div>
     <div><s style="opacity:.7">${esc(wrong)}</s></div><div class="alt">→ ${esc(x.k.text)}</div>
     <div class="row"><button class="primary" id="sugOk" title="Sözlüğe düzeltme kuralı olarak eklenir; aynı hata her yerde düzelir">✔ Uygula</button>
       <button id="sugNo" title="Bu öneri bir daha gösterilmez">✖ Gösterme</button><span class="sp"></span><button id="sugX">Kapat</button></div>`;
-  const b = el.getBoundingClientRect(); pop.hidden = false;
+  placePop(el);
+}
+function placePop(el){
+  const pop = $('sugPop'), b = el.getBoundingClientRect(); pop.hidden = false;
   const top = b.bottom + 6 + pop.offsetHeight > innerHeight ? b.top - pop.offsetHeight - 6 : b.bottom + 6;
   pop.style.top = Math.max(6, top) + 'px'; pop.style.left = Math.max(6, Math.min(b.left, innerWidth - pop.offsetWidth - 6)) + 'px';
 }
+const SPL = { w:null };
+async function openSpell(el, w){
+  SUG.x = null; SPL.w = w; const pop = $('sugPop');
+  pop.innerHTML = `<div class="note">🔤 Türkçe sözlükte bulunamadı</div><div><s style="opacity:.7">${esc(w)}</s></div>
+    <div class="cands" id="splList"><span class="note">Öneriler aranıyor…</span></div>
+    <div class="row"><input id="splIn" placeholder="Doğrusunu yaz…" style="flex:1;min-width:140px"><button id="splAdd" class="primary">Düzelt</button></div>
+    <div class="row"><button id="splOk" title="Bu kelime doğru (isim, yöresel kelime, terim…). Kelime listene eklenir, bir daha işaretlenmez">✔ Doğru, listeme ekle</button><span class="sp"></span><button id="sugX">Kapat</button></div>
+    <div class="note">Bir öneriye ya da Düzelt'e basınca sözlüğe kural olarak eklenir; bu yanlış kelime her yerde düzelir.</div>`;
+  placePop(el);
+  const { dom, gen } = await Spell.suggest(w); if (SPL.w !== w || $('sugPop').hidden) return;
+  $('splList').innerHTML = dom.map(x => `<button class="splc" data-v="${esc(x)}" title="Senin sözlüğünden (kalıplar, kurallar, düzeltmelerin)">⭐ ${esc(x)}</button>`).join('')
+    + gen.map(x => `<button class="splc" data-v="${esc(x)}" title="Türkçe sözlükten">${esc(x)}</button>`).join('')
+    || '<span class="note">Benzer kelime bulunamadı. Doğrusunu aşağıya yazabilirsin.</span>';
+  placePop(el);
+}
+function spellFix(w, v){
+  v = (v || '').trim(); if (!v) return;
+  const { add } = Dict.merge([Dict.mk(w, v, 'Yazım', 'all')]);
+  $('sugPop').hidden = true; afterDictChange(); toast(add ? `"${w}" → "${v}" sözlüğe eklendi, her yerde düzeldi` : 'Sözlükteki kural güncellendi');
+}
+function renderSpellBtn(){
+  const b = $('spellBtn'); if (!b) return; const on = Spell.wanted();
+  b.classList.toggle('on', on && Spell.state === 'ready');
+  b.textContent = !on ? '🔤 Yazım denetimi' : Spell.state === 'loading' ? `🔤 Türkçe sözlük indiriliyor %${Spell.pct}` :
+    Spell.state === 'error' ? '🔤 Yazım (yüklenemedi — tekrar dene)' : Spell.state === 'ready' ? `🔤 Yazım (${state.splTotal || 0})` : '🔤 Yazım denetimi';
+}
+$('spellBtn').onclick = () => {
+  if (!Spell.wanted() || Spell.state === 'error') { Spell.setWanted(true); if (Spell.state === 'error') Spell.state = 'off'; Spell.start(); renderSpellBtn(); renderTranscript(); return; }
+  Spell.setWanted(false); $('sugPop').hidden = true; renderTranscript();
+};
+if (Spell.wanted() && !new URLSearchParams(location.search).has('nospell')) setTimeout(() => Spell.start(), 1500);
 $('sugPop').onclick = (e) => {
+  if (e.target.id === 'sugX') { $('sugPop').hidden = true; return; }
+  if (SPL.w && !SUG.x) {
+    const c = e.target.closest('.splc'); if (c) { spellFix(SPL.w, c.dataset.v); return; }
+    if (e.target.id === 'splAdd') { spellFix(SPL.w, $('splIn').value); return; }
+    if (e.target.id === 'splOk') { Spell.mine.add(SPL.w); Spell.saveMine(); $('sugPop').hidden = true; renderTranscript(); toast(`"${SPL.w}" kelime listene eklendi`); }
+    return;
+  }
   const x = SUG.x; if (!x) return;
   if (e.target.id === 'sugOk') {
     const { add, upd } = Dict.merge([Dict.mk(x.win, x.k.text, x.k.grp || '', x.k.spk)]);
@@ -1842,7 +2038,8 @@ $('sugPop').onclick = (e) => {
     if (!x.k.ign.includes(x.win)) x.k.ign.push(x.win); Kalip.save(); $('sugPop').hidden = true; renderTranscript();
   } else if (e.target.id === 'sugX') $('sugPop').hidden = true;
 };
-document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug')) $('sugPop').hidden = true; });
+document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug') && !e.target.closest('.spl')) $('sugPop').hidden = true; });
+$('sugPop').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'splIn') spellFix(SPL.w, e.target.value); if (e.key === 'Escape') $('sugPop').hidden = true; });
 $('transcript').addEventListener('scroll', () => { $('sugPop').hidden = true; });
 $('sugBtn').onclick = () => { state.showSug = !state.showSug; $('sugPop').hidden = true; renderTranscript(); };
 

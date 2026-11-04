@@ -109,17 +109,24 @@
   #dictBulk[hidden]{display:none}
   .tabs button{border-radius:8px 8px 0 0}
   .tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
-  .seg .sug{text-decoration:underline dashed var(--warn);text-underline-offset:3px;text-decoration-thickness:2px;cursor:help}
+  .seg .sug{text-decoration:underline dashed var(--warn);text-underline-offset:3px;text-decoration-thickness:2px;cursor:help;background:rgba(245,158,11,.10);border-radius:3px}
   .seg .sug:hover{background:rgba(245,158,11,.15)}
   #sugPop{position:fixed;z-index:30;background:var(--panel);border:1px solid var(--warn);border-radius:10px;padding:10px 12px;width:min(420px,92vw);box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:8px;font-size:13px}
   #sugPop[hidden]{display:none}
   #sugPop .alt{font-size:15px;color:#86efac}
   #sugBtn.on{border-color:var(--warn);color:var(--warn)}
+  .mk{display:inline-flex}
+  .mk[hidden]{display:none}
+  .mk > button:first-child{border-radius:8px 0 0 8px}
+  .mk .eye{border-radius:0 8px 8px 0;border-left:0;padding:6px 8px}
+  .mk .eye.off{opacity:.45;text-decoration:line-through}
+  .seg .flash{animation:flash 1.6s ease-out}
+  @keyframes flash{0%,40%{background:rgba(250,204,21,.55);box-shadow:0 0 0 3px rgba(250,204,21,.55)}100%{background:transparent;box-shadow:none}}
   #spellBtn.on{border-color:var(--err);color:#fca5a5}
   #ctxBtn.on{border-color:#60a5fa;color:#93c5fd}
-  .seg .ctx{text-decoration:underline dotted #60a5fa;text-underline-offset:3px;text-decoration-thickness:2px;cursor:help}
+  .seg .ctx{text-decoration:underline dotted #60a5fa;text-underline-offset:3px;text-decoration-thickness:3px;cursor:help;background:rgba(96,165,250,.14);border-radius:3px}
   .seg .ctx:hover{background:rgba(96,165,250,.15)}
-  .seg .spl{text-decoration:underline dotted var(--err);text-underline-offset:3px;text-decoration-thickness:2px;cursor:help}
+  .seg .spl{text-decoration:underline dotted var(--err);text-underline-offset:3px;text-decoration-thickness:3px;cursor:help;background:rgba(239,68,68,.12);border-radius:3px}
   .seg .spl:hover{background:rgba(239,68,68,.15)}
   #sugPop .cands{display:flex;flex-wrap:wrap;gap:6px}
   #sugPop .cands button{padding:4px 10px}
@@ -219,9 +226,9 @@
       <button id="txtBtn" disabled>.txt</button>
       <button id="srtBtn" disabled>.srt</button>
       <button id="addVBtn" hidden title="Bu kaydın vatandaş kanalını metne çevir (personel tarafına dokunmaz)">＋ Vatandaşı çevir</button>
-      <button id="spellBtn" title="Türkçe sözlükte olmayan kelimeleri kırmızı noktalı çizgiyle işaretle (ilk açılışta ≈14 MB sözlük bir kez indirilir)">🔤 Yazım denetimi</button>
-      <button id="ctxBtn" title="Kayıtlarındaki metinlerden öğrenir: bu bağlamda genelde başka (benzer) bir kelime geçiyorsa mavi noktalı çizgiyle işaretler">🧠 Bağlam</button>
-      <button id="sugBtn" hidden title="Doğru kalıplara benzeyen yerleri (💡 sözlük) altı kesik çizgiyle işaretle">💡 Öneriler</button>
+      <span class="mk" id="sugGrp" hidden><button id="sugBtn" title="Sıradaki öneriye git (doğru kalıplara benzeyen yerler)">💡 Öneriler</button><button class="eye" id="sugEye" title="İşaretleri göster / gizle">👁</button></span>
+      <span class="mk"><button id="spellBtn" title="Sıradaki Türkçede olmayan kelimeye git (ilk açılışta ≈14 MB sözlük bir kez indirilir)">🔤 Yazım denetimi</button><button class="eye" id="spellEye" title="İşaretleri göster / gizle">👁</button></span>
+      <span class="mk"><button id="ctxBtn" title="Sıradaki bağlama uymayan kelimeye git">🧠 Bağlam</button><button class="eye" id="ctxEye" title="İşaretleri göster / gizle">👁</button></span>
       <button id="dropBtn" hidden title="Programın elediği satırları (uydurma, tekrar, yankı, boş çıktı) soluk olarak göster">🔍 Elenenler</button>
       <button id="redoBtn" disabled title="Kaydı seçili modelle baştan metne çevir">↻ Yeniden çevir</button>
       <button id="delBtn" disabled>Sil</button>
@@ -1443,9 +1450,9 @@ function renderTranscript(){
     return '\u0000' + s.start + '\u0000' + `<div class="seg ${s.spk || ''} ${q && !hit ? 'dim' : ''} ${s.fix ? 'hasfix' : ''}" data-i="${i}"><span class="t">${fmt(s.start)}${who}</span><span class="txt"><span class="orig">${html}</span>${s.edit != null ? '<span class="edmark" title="Elle düzeltildi">✎ düzeltildi</span>' : ''}${fix}</span><button class="edb" title="Metni düzelt: program yanlış duymuş (sözlüğe öğret)">✎</button><button class="fixb" title="Doğrusunu yaz: nasıl söylenmeliydi (eğitim)">✏️</button><button class="say" title="Bu cümleyi seslendir">🔊</button></div>${teditor}${editor}`;
   }).filter(Boolean).map(h => { const m = h.match(/^\u0000([^\u0000]+)\u0000/); return { t:+m[1], html:h.slice(m[0].length) }; })
     .concat(dropRows).sort((a, b) => a.t - b.t).map(x => x.html).join('');
-  $('sugBtn').hidden = !Kalip.list.some(k => k.on);
-  $('sugBtn').classList.toggle('on', !!state.showSug);
-  $('sugBtn').textContent = state.showSug ? `💡 Öneriler (${state.sugTotal})` : '💡 Öneriler (kapalı)';
+  $('sugGrp').hidden = !Kalip.list.some(k => k.on);
+  $('sugBtn').classList.toggle('on', !!state.showSug); $('sugEye').classList.toggle('off', !state.showSug);
+  $('sugBtn').textContent = state.showSug ? `💡 Öneriler (${state.sugTotal})` : '💡 Öneriler (gizli)';
   renderSpellBtn(); renderCtxBtn();
   const ta = box.querySelector('.editor textarea, .teditor textarea'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   syncHighlight(true);
@@ -2100,26 +2107,42 @@ function ctxApply(){
 }
 function renderCtxBtn(){
   const b = $('ctxBtn'); if (!b) return; const on = Ctx.on(), m = on ? Ctx.model() : null;
-  b.classList.toggle('on', on);
-  b.textContent = !on ? '🧠 Bağlam (kapalı)' : m.total < Ctx.MIN ? '🧠 Bağlam (veri az)' : `🧠 Bağlam (${state.ctxTotal || 0})`;
-  b.title = on && m.total < Ctx.MIN ? 'Bağlamdan öğrenmek için daha fazla çevrilmiş kayıt gerekiyor' : 'Kayıtlarındaki metinlerden öğrenir: bu bağlamda genelde başka (benzer) bir kelime geçiyorsa mavi noktalı çizgiyle işaretler';
+  b.classList.toggle('on', on); $('ctxEye').classList.toggle('off', !on);
+  b.textContent = !on ? '🧠 Bağlam (gizli)' : m.total < Ctx.MIN ? '🧠 Bağlam (veri az)' : `🧠 Bağlam (${state.ctxTotal || 0})`;
+  b.title = on && m.total < Ctx.MIN ? 'Bağlamdan öğrenmek için daha fazla çevrilmiş kayıt gerekiyor' : 'Sıradaki bağlama uymayan kelimeye git (kayıtlarındaki metinlerden öğrenir)';
 }
-$('ctxBtn').onclick = () => { Ctx.setOn(!Ctx.on()); $('sugPop').hidden = true; renderTranscript(); };
+$('ctxBtn').onclick = () => { if (!Ctx.on()) { Ctx.setOn(true); renderTranscript(); } navMark('ctx'); };
+$('ctxEye').onclick = () => { Ctx.setOn(!Ctx.on()); $('sugPop').hidden = true; renderTranscript(); };
+// Sıradaki işaretli yere git: ekranda ortala, kısa süre parlat ve penceresini aç
+function navMark(cls){
+  const els = [...document.querySelectorAll('#transcript .' + cls)];
+  if (!els.length) { toast('Bu kayıtta işaretli yer yok'); return; }
+  const pos = (el) => { const seg = el.closest('.seg'); return [+seg.dataset.i, [...seg.querySelectorAll('.' + cls)].indexOf(el)]; };
+  const last = state.nav && state.nav.cls === cls && state.nav.rec === state.activeId ? state.nav.at : [-1, -1];
+  const el = els.find(x => { const [a, b] = pos(x); return a > last[0] || (a === last[0] && b > last[1]); }) || els[0];
+  state.nav = { cls, rec: state.activeId, at: pos(el) };
+  setFollow(false); el.scrollIntoView({ block:'center' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  setTimeout(() => el.click(), 60);
+}
 function spellFix(w, v){
   v = (v || '').trim(); if (!v) return;
   const { add } = Dict.merge([Dict.mk(w, v, 'Yazım', 'all')]);
   $('sugPop').hidden = true; afterDictChange(); toast(add ? `"${w}" → "${v}" sözlüğe eklendi, her yerde düzeldi` : 'Sözlükteki kural güncellendi');
 }
 function renderSpellBtn(){
-  const b = $('spellBtn'); if (!b) return; const on = Spell.wanted();
+  const b = $('spellBtn'); if (!b) return; const on = Spell.wanted(); $('spellEye').classList.toggle('off', !on);
   b.classList.toggle('on', on && Spell.state === 'ready');
   b.textContent = !on ? '🔤 Yazım denetimi' : Spell.state === 'loading' ? `🔤 Türkçe sözlük indiriliyor %${Spell.pct}` :
     Spell.state === 'error' ? '🔤 Yazım (yüklenemedi — tekrar dene)' : Spell.state === 'ready' ? `🔤 Yazım (${state.splTotal || 0})` : '🔤 Yazım denetimi';
 }
+function spellEnable(){ Spell.setWanted(true); if (Spell.state === 'error') Spell.state = 'off'; Spell.start(); renderSpellBtn(); renderTranscript(); }
 $('spellBtn').onclick = () => {
-  if (!Spell.wanted() || Spell.state === 'error') { Spell.setWanted(true); if (Spell.state === 'error') Spell.state = 'off'; Spell.start(); renderSpellBtn(); renderTranscript(); return; }
-  Spell.setWanted(false); $('sugPop').hidden = true; renderTranscript();
+  if (!Spell.wanted() || Spell.state === 'error' || Spell.state === 'off') { spellEnable(); return; }
+  if (Spell.state === 'loading') { toast('Türkçe sözlük hazırlanıyor, biraz bekle'); return; }
+  navMark('spl');
 };
+$('spellEye').onclick = () => { if (Spell.wanted()) { Spell.setWanted(false); $('sugPop').hidden = true; renderTranscript(); } else spellEnable(); };
 if (Spell.wanted() && !new URLSearchParams(location.search).has('nospell')) setTimeout(() => Spell.start(), 1500);
 $('sugPop').onclick = (e) => {
   if (e.target.id === 'sugX') { $('sugPop').hidden = true; return; }
@@ -2145,7 +2168,8 @@ $('sugPop').onclick = (e) => {
 document.addEventListener('mousedown', (e) => { if (!$('sugPop').hidden && !e.target.closest('#sugPop') && !e.target.closest('.sug') && !e.target.closest('.spl') && !e.target.closest('.ctx')) $('sugPop').hidden = true; });
 $('sugPop').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'splIn') spellFix(SPL.w, e.target.value); if (e.key === 'Escape') $('sugPop').hidden = true; });
 $('transcript').addEventListener('scroll', () => { $('sugPop').hidden = true; });
-$('sugBtn').onclick = () => { state.showSug = !state.showSug; $('sugPop').hidden = true; renderTranscript(); };
+$('sugBtn').onclick = () => { if (!state.showSug) { state.showSug = true; renderTranscript(); } navMark('sug'); };
+$('sugEye').onclick = () => { state.showSug = !state.showSug; $('sugPop').hidden = true; renderTranscript(); };
 
 /* ---------- Düzeltmeden öğrenme ---------- */
 const LRN = { props:[], rec:null, seg:null };

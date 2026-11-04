@@ -851,7 +851,7 @@ const Dict = {
     const out = [];
     for (const line of (text || '').replace(/^﻿/, '').split(/\r?\n/)) {
       if (!line.trim()) continue;
-      const p = line.includes('=>') ? line.split('=>').map(x => x.trim()) : line.includes('\t') ? this.splitLine(line, '\t') : line.includes(';') ? this.splitLine(line, ';') : null;
+      const p = line.includes('=>') ? (([l, ...r]) => [l, ...r.join('=>').split('\t')])(line.split('=>')).map(x => x.trim()) : line.includes('\t') ? this.splitLine(line, '\t') : line.includes(';') ? this.splitLine(line, ';') : null;
       if (!p || !p[0] || trLow(p[0]) === 'yanlış') continue;    // başlık satırını atla
       out.push(this.mk(p[0], p[1] || '', p[2] || '', this.spkCode(p[3]), !/^(hayır|kapalı|0|false)$/i.test((p[4] || '').trim())));
     }
@@ -2183,6 +2183,14 @@ function openLearn(props, rec, seg){
       <td><input type="text" class="l-grp" list="dictGrps" value="" placeholder="—"></td><td><select class="l-spk">${spkOpts(p.spk)}</select></td>
       <td class="w on l-n">${Math.max(0, n - 1)}</td></tr>`; }).join('');
   $('learnPanel').hidden = false;
+}
+// Grup kutusu: içinde yazı varken tarayıcı listede sadece ona uyanları gösteriyor.
+// Kutuya girince geçici olarak boşalt ki tüm gruplar görünsün; seçim yapılmazsa eski değer geri gelir.
+for (const id of ['dictBody', 'learnBody']) {
+  $(id).addEventListener('focusin', (e) => { const el = e.target; if (!el.matches('.d-grp,.l-grp')) return;
+    el.dataset.old = el.value; if (el.value) { el.placeholder = el.value; el.value = ''; } });
+  $(id).addEventListener('focusout', (e) => { const el = e.target; if (!el.matches('.d-grp,.l-grp')) return;
+    if (!el.value && el.dataset.old) el.value = el.dataset.old; el.placeholder = '—'; });
 }
 $('learnBody').addEventListener('change', (e) => {
   const tr = e.target.closest('tr[data-k]'); if (!tr || !e.target.matches('.l-from,.l-spk')) return;

@@ -154,8 +154,29 @@
   .stlines tr td:first-child{border-left:4px solid var(--c)}
   .stlines .acts{white-space:nowrap}
   .stlines .acts button{padding:2px 6px}
-  #stTL{width:100%;height:110px;background:var(--panel2);border-radius:8px;cursor:pointer}
+  #stTL{width:100%;height:130px;background:var(--panel2);border-radius:8px;cursor:pointer}
+  #stTL.grab{cursor:grabbing}
+  .sndcell{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);padding:4px 2px}
+  .sndcell input{width:70px !important}
   #stImportBox[hidden]{display:none}
+  #stTeleSetup[hidden]{display:none}
+  #stLib[hidden]{display:none}
+  .libitem{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--panel2)}
+  .libitem button{padding:2px 7px}
+  .libnew{border:1px dashed var(--line);border-radius:8px;padding:8px}
+  .libnew input{width:100%;box-sizing:border-box}
+  .rec-on{background:#dc2626 !important;border-color:#dc2626 !important;color:#fff !important;animation:recblink 1s infinite}
+  .tele{border:2px solid var(--c);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--panel2)}
+  .tele[hidden]{display:none}
+  .tele-text{font-size:22px;line-height:1.5}
+  .tele-text u{text-decoration-color:var(--warn);text-decoration-thickness:3px}
+  .micbar{display:inline-block;width:120px;height:8px;background:#1f2937;border-radius:4px;overflow:hidden;vertical-align:middle}
+  .micbar i{display:block;height:100%;width:0;background:#22c55e;transition:width .05s}
+  .stlines .l-rec.has{color:#22c55e;border-color:#22c55e}
+  .stlines .l-rec.on{background:#dc2626;color:#fff;border-color:#dc2626;animation:recblink 1s infinite}
+  @keyframes recblink{50%{opacity:.55}}
+  .recinfo{font-size:11px;color:#86efac;margin-top:3px}
+  .recinfo.warn{color:var(--warn)}
   #dictTools[hidden],#dictWrap[hidden],#wordBox[hidden]{display:none}
   .seg.dropped{opacity:.55;cursor:default}
   .seg.dropped:hover{background:none}
@@ -348,9 +369,26 @@
         <h3>Konuşmacılar</h3>
         <div id="stSpk"></div>
         <button id="stAddSpk">＋ Konuşmacı</button>
+        <button id="stLibToggle" title="Bir kez kaydedip her senaryoda kullandığın sesler (açılış, kapanış anonsu…)">📚 Ses kütüphanesi</button>
+        <div id="stLib" class="spk" hidden>
+          <div class="row note">Eklenecek konuşmacı: <select id="stLibWho"></select></div>
+          <div id="stLibList" class="spk"></div>
+          <div class="libnew spk">
+            <b class="note">Yeni kütüphane kaydı</b>
+            <input id="stLibName" placeholder="Ad (ör. Açılış anonsu)">
+            <input id="stLibText" placeholder="Söylenen cümle (isteğe bağlı)">
+            <label class="note">Metni kalıplara da ekle: <select id="stLibKal"><option value="">Hayır</option><option value="Açılış">Açılış (başta)</option><option value="Kapanış">Kapanış (sonda)</option><option value="Standart">Diğer</option></select></label>
+            <div class="row"><button id="stLibRec" class="primary">🎙 Kaydet</button><button id="stLibFileBtn" title="Hazır bir ses dosyası yükle (müzik, efekt, eski kayıt)">📁 Dosyadan</button><input type="file" id="stLibFile" accept="audio/*" hidden></div>
+          </div>
+        </div>
         <h3>Ses ayarları</h3>
         <label class="row note"><input type="checkbox" id="stPhone"> 📞 Telefon hattı sesi</label>
         <label class="row note"><input type="checkbox" id="stNoise"> Hat hışırtısı</label>
+        <label class="row note"><input type="checkbox" id="stRing"> 📞 Başta çalma sesi ve bağlanma</label>
+        <label class="row note"><input type="checkbox" id="stHang"> 📵 Sonda kapanma sesi</label>
+        <div class="row note">Efekt ekle: <button class="fxadd" data-t="hold" title="Seçili satırın altına bekleme müziği">🎵 Bekleme</button><button class="fxadd" data-t="ring">📞</button><button class="fxadd" data-t="click">🔌</button><button class="fxadd" data-t="hangup">📵</button></div>
+        <label class="note" title="Aralara, hıza ve tona küçük rastgele farklar ekler; konuşma makine gibi düzenli duyulmaz">Doğallık <input type="range" id="stNat" min="0" max="100" step="10" style="width:120px;vertical-align:middle"> <span id="stNatV"></span>
+          <button id="stReseed" title="Rastgele farkları yeniden dağıt">🎲</button></label>
         <label class="row note" title="İlk konuşmacı sol, diğerleri sağ kanalda — gerçek çağrı kayıtları gibi. Bu dosyayı ses → metin tarafına yükleyip deneyebilirsin."><input type="checkbox" id="stStereo"> Stereo (çağrı kaydı gibi)</label>
         <div class="note">Hız ve ton ayarları her konuşmacının sesine uygulanır. Satırdaki hız, konuşmacınınkine eklenir.<br>
           Metinde <code>*kelime*</code> yazarsan (ya da kelimeyi seçip <b>Ctrl+B</b>'ye basarsan) o kısım vurgulu (biraz yavaş, yüksek ve öncesinde kısa duraksamayla) okunur.<br>
@@ -366,11 +404,13 @@
           <textarea id="stImportText" spellcheck="false" style="min-height:140px" placeholder="Personel: İletişim merkezine hoş geldiniz, size nasıl yardımcı olabilirim?&#10;Vatandaş: Merhaba, *yaşlılık maaşımı* ne zaman alabilirim?&#10;Personel: Hemen kontrol ediyorum. [0.5]&#10;Vatandaş: Geçen ay da… [-0.6]"></textarea>
           <div class="row"><label class="note"><input type="checkbox" id="stImportReplace" checked> Mevcut satırların yerine koy</label><span class="sp"></span><button id="stImportCancel">Vazgeç</button><button id="stImportOk" class="primary">Aktar</button></div>
         </div>
-        <div class="dtwrap stlines"><table class="dt"><thead><tr><th style="width:130px">Konuşan</th><th>Söylenen (vurgu: *kelime* · duraksama: (2))</th><th style="width:84px" title="Önceki konuşmadan sonra kaç sn; eksi = üst üste">Ara (sn)</th><th style="width:76px" title="Bu satıra özel hız farkı (%)">Hız ±%</th><th style="width:118px"></th></tr></thead><tbody id="stLines"></tbody></table></div>
-        <div class="row"><button id="stAddLine">＋ Satır</button><span class="sp"></span><span class="note" id="stStatus"></span></div>
-        <canvas id="stTL" height="110"></canvas>
+        <div class="dtwrap stlines"><table class="dt"><thead><tr><th style="width:130px">Konuşan</th><th>Söylenen (vurgu: *kelime* · duraksama: (2))</th><th style="width:84px" title="Önceki konuşmadan sonra kaç sn; eksi = üst üste">Ara (sn)</th><th style="width:76px" title="Bu satıra özel hız farkı (%)">Hız ±%</th><th style="width:170px"></th></tr></thead><tbody id="stLines"></tbody></table></div>
+        <div class="row"><button id="stAddLine">＋ Satır</button><button id="stTeleBtn" title="Satırları sırayla kendi sesinle oku: okuma ekranında her satır gösterilir, Enter ile sonrakine geçersin">🎙 Sırayla kaydet</button><span class="sp"></span><span class="note" id="stStatus"></span></div>
+        <div id="stTeleSetup" class="spk" hidden></div>
+        <div id="stTele" class="tele" hidden></div>
+        <canvas id="stTL" height="130" title="Bir konuşmayı sürükleyerek arasını değiştir; boş yere tıklayınca oradan çalar"></canvas>
         <div class="row"><button id="stPlay" class="primary">▶ Oluştur ve dinle</button><button id="stStop" disabled>⏹ Durdur</button>
-          <span class="note" id="stTime"></span><span class="sp"></span><button id="stWav" disabled title="Diyaloğun tamamını tek ses dosyası (WAV) olarak indir">⤓ Ses dosyası indir</button></div>
+          <span class="note" id="stTime"></span><span class="sp"></span><button id="stMp3" disabled title="Diyaloğun tamamını MP3 olarak indir (küçük dosya, paylaşmaya uygun)">⤓ MP3</button><button id="stWav" disabled title="Diyaloğun tamamını WAV olarak indir (en yüksek kalite, büyük dosya)">⤓ WAV</button></div>
       </div>
     </div>
   </div>
@@ -963,8 +1003,14 @@ const Kalip = {
     if (o) { this.list = (o.list || []).map(x => ({ ...this.mk(), ...x, ign: x.ign || [], yer: x.yer || this.yerFromGrp(x.grp) })); this.level = o.level || 'orta'; } } catch {} },
   save(){ this.cache.clear(); this._p = null; try { localStorage.setItem(this.KEY, JSON.stringify({ list:this.list, level:this.level })); } catch {} },
   th(){ return this.LEVELS[this.level] || 0.64; },
-  prepared(){ return this._p || (this._p = this.list.filter(k => k.on && Dict.norm(k.text)).map(k => {
-    const words = Dict.norm(k.text).split(' '); return { k, words, flat: words.join(''), pre: words.map(w => w.slice(0, 3)), set: new Set(words), ign: new Set(k.ign) }; })); },
+  // {isim} gibi değişken yerler: kalıp o noktadan parçalara bölünür, her parça ayrı denetlenir; değişken kısma (ad) dokunulmaz
+  subs(text){ const parts = String(text || '').split(/\{[^}]*\}/).map(x => x.replace(/^[\s,.;:!?]+|[\s,.;:!?]+$/g, '')).filter(x => Dict.norm(x));
+    return parts.length > 1 ? parts.filter(x => Dict.norm(x).replace(/ /g, '').length >= 6) : parts; },   // değişkenle bölünen çok kısa parçalar (tek kısa kelime) denetlenmez
+  slots(text){ const out = [], re = /\{\s*([^}]*?)\s*\}/g; let m; while ((m = re.exec(text))) {
+      const L = Dict.norm(text.slice(0, m.index)).split(' ').filter(Boolean), R = Dict.norm(text.slice(m.index + m[0].length)).split(' ').filter(Boolean);
+      out.push({ name: trLow(m[1]), before: L[L.length - 1] || null, after: R[0] || null }); } return out; },
+  prepared(){ return this._p || (this._p = this.list.filter(k => k.on && Dict.norm(k.text)).flatMap(k => this.subs(k.text).map(sub => {
+    const words = Dict.norm(sub).split(' '); return { k, sub, words, flat: words.join(''), pre: words.map(w => w.slice(0, 3)), set: new Set(words), ign: new Set(k.ign) }; }))); },
   // Metinde kalıba benzeyen ama aynı olmayan yerler: [{s,e,k,score,win}]
   // ctx: { start, dur } → satırın kayıttaki yeri. Başta/sonda olması beklenen kalıplar orada daha düşük benzerlikte de önerilir.
   suggest(t, spk, ctx){
@@ -993,7 +1039,7 @@ const Kalip = {
             const lw = ws.filter(w => !p.words.some(pw => same(w, pw))).join(''), lp = p.words.filter(pw => !ws.some(w => same(w, pw))).join('');
             if (lw && lp && levRatio(lw, lp) < 0.2) continue;
           }
-          if (sc >= need && (!best || sc > best.score + 1e-9)) best = { s:toks[i].s, e:toks[i + n - 1].e, k:p.k, score:sc, win, pos };
+          if (sc >= need && (!best || sc > best.score + 1e-9)) best = { s:toks[i].s, e:toks[i + n - 1].e, k:p.k, sub:p.sub, score:sc, win, pos };
         }
       }
       if (best) cands.push(best);
@@ -1114,7 +1160,7 @@ const Spell = {
   vocab(){
     if (this._voc) return this._voc;
     const v = new Map(), add = (t, wgt) => { for (const w of Dict.norm(t).split(' ')) if (w.length > 2) v.set(w, (v.get(w) || 0) + wgt); };
-    for (const k of Kalip.list) add(k.text, 3);
+    for (const k of Kalip.list) for (const t of Kalip.subs(k.text)) add(t, 3);
     for (const r of Dict.rules) add(r.to, 2);
     for (const w of this.mine) add(w, 2);
     for (const r of state.recs) for (const s of r.segments || []) if (s.edit != null) add(s.edit, 1);
@@ -1179,7 +1225,7 @@ const Ctx = {
     const add = (M, a, b, k) => { let x = M.get(a); if (!x) M.set(a, x = new Map()); x.set(b, (x.get(b) || 0) + k); };
     const feed = (t, k) => { const T = this.toks(t); total += T.length * k;
       for (let i = 1; i < T.length; i++) if (!T[i].brk && T[i].w && T[i - 1].w) { add(nx, T[i - 1].w, T[i].w, k); add(pv, T[i].w, T[i - 1].w, k); } };
-    for (const k of Kalip.list) if (k.on) feed(k.text, 5);
+    for (const k of Kalip.list) if (k.on) for (const t of Kalip.subs(k.text)) feed(t, 5);   // {isim} yeri öğrenilmez
     for (const r of Dict.rules) if (r.on) feed(r.to, 3);
     for (const r of state.recs) for (const s of r.segments || []) feed(s.edit != null ? s.edit : Dict.apply(s.text, s.spk), s.edit != null ? 3 : 1);
     this._m = { nx, pv, total }; this._sig = sig; this.dirty = false; this.cache.clear(); return this._m;
@@ -1251,6 +1297,9 @@ const Names = {
         if (pv && /^(adım|ismim)$/.test(pv.w) && !x.brk) add(x.raw, 2, `"${pv.raw} ${x.raw}" denmiş`);
         if (!x.brk && x.raw[0] !== x.raw[0].toLocaleLowerCase('tr') && x.raw.length > 2 && x.raw !== x.raw.toLocaleUpperCase('tr')) add(x.raw, 1, 'büyük harfle yazılmış');
       });
+      // Kalıplardaki {isim} / {ad} yerine gelen kelime (ör. "iyi günler ismim {isim}" → ismim'den sonraki kelime)
+      for (const k of Kalip.list) if (k.on) for (const sl of Kalip.slots(k.text)) { if (!/^(isim|ad|adı|soyad)/.test(sl.name)) continue;
+        T.forEach((x, j) => { const y = sl.before ? (same(x.w, sl.before) && T[j + 1]) : (sl.after && same(x.w, sl.after) && T[j - 1]); if (y && !y.brk) add(y.raw, 3, `"${k.text}" kalıbında isim yerinde`); }); }
       // İsim sorusundan sonra karşı tarafın ilk sözleri (12 sn içinde)
       if (this.Q.test(t)) for (const a of segs.slice(i + 1)) {
         if (a.start - s.start > 12) break; if (s.spk && a.spk === s.spk) continue;
@@ -1572,7 +1621,7 @@ function renderTranscript(){
       const nm = Names.on() ? Names.find(txt, r).filter(x => ![...sg, ...sp].some(g => x.s < g.e && g.s < x.e)) : [];
       const cx = Ctx.on() ? Ctx.find(txt).filter(x => ![...sg, ...sp, ...nm].some(g => x.s < g.e && g.s < x.e)) : [];
       state.sugTotal += sg.length; state.splTotal += sp.length; state.ctxTotal += cx.length; state.nmTotal += nm.length;
-      const marks = [...sg.map((x, n) => ({ s:x.s, e:x.e, h:`<span class="sug" data-n="${n}" title="Öneri: ${esc(x.k.text)}">` })),
+      const marks = [...sg.map((x, n) => ({ s:x.s, e:x.e, h:`<span class="sug" data-n="${n}" title="Öneri: ${esc(x.sub || x.k.text)}">` })),
                      ...sp.map(x => ({ s:x.s, e:x.e, h:`<span class="spl" data-w="${esc(x.w)}" data-s="${x.s}" title="Türkçe sözlükte bulunamadı">` })),
                      ...nm.map(x => ({ s:x.s, e:x.e, h:`<span class="nm" data-s="${x.s}" title="Bu kayıttaki isim: ${esc(x.n.name)}">` })),
                      ...cx.map(x => ({ s:x.s, e:x.e, h:`<span class="ctx" data-s="${x.s}" title="Bu bağlamda genelde: ${esc(x.c)}">` }))].sort((a, b) => a.s - b.s);
@@ -2203,7 +2252,7 @@ function openSug(el, seg, x){
   if (!x) return; SUG.seg = seg; SUG.x = x; SPL.w = null; CTX.x = null; NM.x = null;
   const pop = $('sugPop'), wrong = shown(seg).slice(x.s, x.e);
   pop.innerHTML = `<div class="note">💡 Doğru kalıba benziyor · %${Math.round(x.score * 100)} benzer${x.k.grp ? ' · ' + esc(x.k.grp) : ''}${x.pos ? ` · kaydın ${x.k.yer === 'bas' ? 'başında' : 'sonunda'} olduğu için` : ''}</div>
-    <div><s style="opacity:.7">${esc(wrong)}</s></div><div class="alt">→ ${esc(x.k.text)}</div>
+    <div><s style="opacity:.7">${esc(wrong)}</s></div><div class="alt">→ ${esc(x.sub || x.k.text)}</div>
     <div class="row"><button class="primary" id="sugOk" title="Sözlüğe düzeltme kuralı olarak eklenir; aynı hata her yerde düzelir">✔ Uygula</button>
       <button id="sugNo" title="Bu öneri bir daha gösterilmez">✖ Gösterme</button><span class="sp"></span><button id="sugX">Kapat</button></div>`;
   placePop(el);
@@ -2332,7 +2381,7 @@ $('sugPop').onclick = (e) => {
   }
   const x = SUG.x; if (!x) return;
   if (e.target.id === 'sugOk') {
-    const { add, upd } = Dict.merge([Dict.mk(x.win, x.k.text, x.k.grp || '', x.k.spk)]);
+    const { add, upd } = Dict.merge([Dict.mk(x.win, x.sub || x.k.text, x.k.grp || '', x.k.spk)]);
     $('sugPop').hidden = true; afterDictChange(); toast(add ? 'Sözlüğe eklendi; aynı hata her yerde düzeldi' : 'Sözlükteki kural güncellendi');
   } else if (e.target.id === 'sugNo') {
     if (!x.k.ign.includes(x.win)) x.k.ign.push(x.win); Kalip.save(); $('sugPop').hidden = true; renderTranscript();
@@ -2445,7 +2494,7 @@ const Presets = {
 };
 Presets.load();
 const Studio = {
-  KEY:'ses-metin-senaryolar', list:[], cur:null, bufs:new Map(), ctx:null, mix:null, starts:[], src:null, t0:0, off:0, raf:0, busy:false,
+  KEY:'ses-metin-senaryolar', list:[], cur:null, bufs:new Map(), recBufs:new Map(), ctx:null, mix:null, starts:[], src:null, t0:0, off:0, raf:0, busy:false,
   uid(){ return Math.random().toString(36).slice(2, 9); },
   blank(){ const p = this.uid(), v = this.uid();
     return { id:this.uid(), name:'Yeni senaryo', phone:true, noise:false, stereo:false,
@@ -2463,12 +2512,12 @@ const Studio = {
   pct: (v) => (v >= 0 ? '+' : '') + Math.round(v) + '%',
   hz: (v) => (v >= 0 ? '+' : '') + Math.round(v) + 'Hz',
   // Bir satırı parçalara ayır: *vurgulu* kısımlar ayrı ayarla okunur, (1,5) gibi parantez içindeki sayı o kadar saniye duraksama
-  parts(line){ const sp = this.spk(line.spk), base = (sp.rate || 0) + (line.rate || 0), out = [];
-    for (const seg of (line.text || '').split(/(\*[^*]+\*|\(\s*\d+(?:[.,]\d+)?\s*(?:sn|saniye)?\s*\))/i)) {
+  parts(line){ const sp = this.spk(line.spk), base = (sp.rate || 0) + (line.rate || 0) + Math.round(4 * this.jit(line, 'r')), pj = Math.round(2 * this.jit(line, 'p')), out = [];
+    for (const seg of (line.text || '').replace(/\{[^}]*\}/g, '').split(/(\*[^*]+\*|\(\s*\d+(?:[.,]\d+)?\s*(?:sn|saniye)?\s*\))/i)) {
       const pm = seg.match(/^\(\s*(\d+(?:[.,]\d+)?)\s*(?:sn|saniye)?\s*\)$/i);
       if (pm) { out.push({ pause: Math.min(30, +pm[1].replace(',', '.')) }); continue; }
       const emph = /^\*[^*]+\*$/.test(seg), text = (emph ? seg.slice(1, -1) : seg).trim(); if (!/[\p{L}\p{N}]/u.test(text)) continue;
-      out.push({ emph, text, voice:sp.voice, rate:this.pct(emph ? base - 15 : base), pitch:this.hz((sp.pitch || 0) + (emph ? 8 : 0)), volume:this.pct((sp.volume || 0) + (emph ? 20 : 0)) });
+      out.push({ emph, text, voice:sp.voice, rate:this.pct(emph ? base - 15 : base), pitch:this.hz((sp.pitch || 0) + pj + (emph ? 8 : 0)), volume:this.pct((sp.volume || 0) + (emph ? 20 : 0)) });
     }
     return out; },
   ac(){ if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:ST_SR }); return this.ctx; },
@@ -2485,7 +2534,12 @@ const Studio = {
     while (a < z && Math.abs(d[a]) < thr) a++; while (z > a && Math.abs(d[z]) < thr) z--;
     a = Math.max(0, a - Math.round(keep * b.sampleRate)); z = Math.min(d.length - 1, z + Math.round(keep * b.sampleRate));
     const o = this.ac().createBuffer(1, Math.max(1, z - a + 1), b.sampleRate); o.copyToChannel(d.slice(a, z + 1), 0); return o; },
+  async recBuf(id){ if (this.recBufs.has(id)) return this.recBufs.get(id); const blob = await RecDB.get(id); if (!blob) return null;
+    const b = await this.ac().decodeAudioData(await blob.arrayBuffer()); this.recBufs.set(id, b); return b; },
   async line(line){
+    if (line.snd) return this.snd(line.snd, +line.sndN || { ring:2, hold:8, hangup:1, click:1 }[line.snd]);
+    if (line.clip) { const c = Lib.get(line.clip); const b = c && await this.recBuf(c.rec); if (b) return b; }   // kütüphaneden
+    if (line.rec) { const b = await this.recBuf(line.rec); if (b) return b; }   // kendi kaydın varsa o
     const ps = this.parts(line); if (!ps.some(p => p.pause == null)) return null;
     // Sıra: ses parçaları + sessizlikler. Vurgudan önce kısa, sonra daha kısa boşluk; (sayı) kadar duraksama
     const seq = []; let prev = null;
@@ -2499,16 +2553,48 @@ const Studio = {
     for (const x of seq) { if (typeof x === 'number') k += x; else { d.set(x.getChannelData(0), k); k += x.length; } }
     return o; },
   // Zaman çizelgesi: her satır önceki satırın bitişine göre (ara eksiyse üst üste) başlar
-  layout(bufs){ const st = []; let end = 0;
-    bufs.forEach((b, i) => { const g = +this.cur.lines[i].gap || 0, s = Math.max(0, (i ? end : 0) + (i ? g : 0.2)); st.push(b ? s : null); if (b) end = s + b.duration; else end += Math.max(0, g); });
-    return st; },
+  // Doğallık: satıra özgü sabit (tohumlu) rastgele sayı, -1..1 arası, doğallık seviyesiyle çarpılmış
+  jit(line, k){ const nat = (this.cur.natural || 0) / 100; if (!nat || !line) return 0;
+    let h = 2166136261; const str = line.id + '|' + (this.cur.seed || 0) + '|' + k; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return nat * ((h >>> 0) / 4294967295 * 2 - 1); },
+  // Zaman çizelgesi: her satır önceki satırın bitişine göre (ara eksiyse üst üste) başlar
+  layout(bufs, base){ const st = [], pe = []; let end = base;
+    bufs.forEach((b, i) => { const L = this.cur.lines[i], g = (+L.gap || 0) + 0.15 * this.jit(L, 'g');
+      const s = i ? Math.max(0, end + g) : base + Math.max(base ? 0 : 0.2, g); pe.push(end); st.push(b ? s : null); if (b) end = s + b.duration; else end += Math.max(0, g); });
+    this.prevEnd = pe; return st; },
+  // Efekt sesleri: çalma, klik, kapanma (meşgul), bekleme müziği — tamamen burada üretilir
+  snd(type, n){
+    const key = 'snd:' + type + ':' + n; if (this.bufs.has(key)) return this.bufs.get(key);
+    const SR = ST_SR, parts = [];
+    const sil = (t) => new Float32Array(Math.round(t * SR));
+    const tone = (t, f, amp = 0.32) => { const a = new Float32Array(Math.round(t * SR)), fade = Math.round(0.01 * SR);
+      for (let i = 0; i < a.length; i++) { const env = Math.min(1, i / fade, (a.length - i) / fade); a[i] = amp * env * Math.sin(2 * Math.PI * f * i / SR); } return a; };
+    const click = () => { const a = new Float32Array(Math.round(0.06 * SR)); for (let i = 0; i < a.length; i++) { const e = Math.exp(-i / (0.006 * SR)); a[i] = e * ((Math.random() * 2 - 1) * 0.5 + 0.5 * Math.sin(2 * Math.PI * 120 * i / SR)); } return a; };
+    if (type === 'ring') for (let i = 0; i < n; i++) { parts.push(tone(1.0, 450)); if (i < n - 1) parts.push(sil(3.0)); }
+    if (type === 'click') parts.push(click());
+    if (type === 'hangup') { parts.push(click(), sil(0.35)); for (let i = 0; i < 4; i++) parts.push(tone(0.45, 450), sil(0.45)); }
+    if (type === 'hold') {   // yumuşak, tekrarlayan bir arpej
+      const notes = [261.63, 329.63, 392.0, 493.88, 440.0, 349.23, 392.0, 329.63], step = 0.36, total = Math.round(n * SR), a = new Float32Array(total);
+      for (let k = 0; k * step * SR < total; k++) { const f = notes[k % notes.length] * (Math.floor(k / notes.length) % 2 ? 1 : 0.5) * 2, st0 = Math.round(k * step * SR), len = Math.round(0.9 * SR);
+        for (let i = 0; i < len && st0 + i < total; i++) { const e = Math.exp(-i / (0.25 * SR)) * Math.min(1, i / (0.005 * SR)); a[st0 + i] += 0.16 * e * (Math.sin(2 * Math.PI * f * i / SR) + 0.25 * Math.sin(4 * Math.PI * f * i / SR)); } }
+      const fo = Math.round(0.8 * SR); for (let i = 0; i < fo && i < total; i++) a[total - 1 - i] *= i / fo; parts.push(a); }
+    const len = parts.reduce((x, p) => x + p.length, 0), o = this.ac().createBuffer(1, Math.max(1, len), SR), d = o.getChannelData(0); let k = 0;
+    for (const p of parts) { d.set(p, k); k += p.length; }
+    this.bufs.set(key, o); return o; },
   async render(){
     const L = this.cur.lines, bufs = [];
     for (let i = 0; i < L.length; i++) { stStatus(`Seslendiriliyor ${i + 1}/${L.length}…`); bufs.push(await this.line(L[i])); stHighlight(i); }
-    const st = this.layout(bufs), dur = Math.max(0.5, ...bufs.map((b, i) => b ? st[i] + b.duration : 0)) + 0.4;
+    // Başta çalma + bağlanma, sonda kapanma sesi (seçiliyse)
+    const intro = this.cur.ringStart ? (() => { const r = this.snd('ring', 2), c = this.snd('click', 1), o = this.ac().createBuffer(1, r.length + Math.round(0.4 * ST_SR) + c.length, ST_SR);
+      o.getChannelData(0).set(r.getChannelData(0), 0); o.getChannelData(0).set(c.getChannelData(0), r.length + Math.round(0.4 * ST_SR)); return o; })() : null;
+    const base = intro ? intro.duration + 0.3 : 0;
+    const st = this.layout(bufs, base);
+    let last = Math.max(base, ...bufs.map((b, i) => b ? st[i] + b.duration : 0));
+    const outro = this.cur.hangEnd ? this.snd('hangup', 1) : null, outroAt = last + 0.6;
+    const dur = (outro ? outroAt + outro.duration : last) + 0.4;
     const stereo = this.cur.stereo, ch = stereo ? 2 : 1, oc = new OfflineAudioContext(ch, Math.ceil(dur * ST_SR), ST_SR);
     const firstSpk = this.cur.speakers[0] && this.cur.speakers[0].id;
-    const chain = (node, chIdx) => {   // telefon hattı: 300–3400 Hz bant, hafif doygunluk
+    const chain = (node, chIdx) => {   // telefon hattı: 300–3400 Hz bant, hafif doygunluk; chIdx -1 = iki kanala birden
       let n = node;
       if (this.cur.phone) {
         const hp = oc.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 320; hp.Q.value = 0.7;
@@ -2516,19 +2602,29 @@ const Studio = {
         const ws = oc.createWaveShaper(); const c = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; c[i] = Math.tanh(2.2 * x) / Math.tanh(2.2); } ws.curve = c;
         n.connect(hp); hp.connect(lp); lp.connect(ws); n = ws;
       }
-      if (stereo) { const m = oc.createChannelMerger(2); n.connect(m, 0, chIdx); m.connect(oc.destination); } else n.connect(oc.destination);
+      if (stereo) { const m = oc.createChannelMerger(2); if (chIdx < 0) { n.connect(m, 0, 0); n.connect(m, 0, 1); } else n.connect(m, 0, chIdx); m.connect(oc.destination); } else n.connect(oc.destination);
     };
-    bufs.forEach((b, i) => { if (!b) return; const s = oc.createBufferSource(); s.buffer = b; const g = oc.createGain(); g.gain.value = this.cur.phone ? 0.8 : 1; s.connect(g);
-      chain(g, L[i].spk === firstSpk ? 0 : 1); s.start(st[i]); });
+    const place = (b, at, chIdx) => { const s = oc.createBufferSource(); s.buffer = b; const g = oc.createGain(); g.gain.value = this.cur.phone ? 0.8 : 1; s.connect(g); chain(g, chIdx); s.start(at); };
+    bufs.forEach((b, i) => { if (b) place(b, st[i], L[i].snd ? -1 : L[i].spk === firstSpk ? 0 : 1); });
+    if (intro) place(intro, 0, -1); if (outro) place(outro, outroAt, -1);
     if (this.cur.noise) {   // hat hışırtısı: çok düşük seviyeli filtrelenmiş gürültü
       const nb = oc.createBuffer(1, Math.ceil(dur * ST_SR), ST_SR), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * 0.012;
       const s = oc.createBufferSource(); s.buffer = nb; const lp = oc.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2500; s.connect(lp);
-      if (stereo) { const sp = oc.createChannelSplitter(1), m = oc.createChannelMerger(2); lp.connect(m, 0, 0); lp.connect(m, 0, 1); m.connect(oc.destination); } else lp.connect(oc.destination); s.start(0);
+      if (stereo) { const m = oc.createChannelMerger(2); lp.connect(m, 0, 0); lp.connect(m, 0, 1); m.connect(oc.destination); } else lp.connect(oc.destination); s.start(0);
     }
     stStatus('Birleştiriliyor…');
-    this.mix = await oc.startRendering(); this.starts = st.map((s, i) => s == null ? null : { s, e: s + bufs[i].duration, spk:L[i].spk });
+    this.mix = await oc.startRendering(); this.starts = st.map((s, i) => s == null ? null : { s, e: s + bufs[i].duration, spk:L[i].spk, snd:!!L[i].snd });
+    this.extras = [intro && { s:0, e:intro.duration, label:'📞' }, outro && { s:outroAt, e:outroAt + outro.duration, label:'📵' }].filter(Boolean);
     return this.mix;
   },
+  async mp3(){
+    if (!window.lamejs) await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js'; sc.onload = res; sc.onerror = () => rej(new Error('MP3 kütüphanesi indirilemedi (internet?)')); document.head.appendChild(sc); });
+    const b = this.mix, ch = b.numberOfChannels, enc = new lamejs.Mp3Encoder(ch, ST_SR, ch === 2 ? 96 : 64);
+    const conv = (f) => { const o = new Int16Array(f.length); for (let i = 0; i < f.length; i++) { const v = Math.max(-1, Math.min(1, f[i])); o[i] = v < 0 ? v * 0x8000 : v * 0x7fff; } return o; };
+    const Lc = conv(b.getChannelData(0)), Rc = ch === 2 ? conv(b.getChannelData(1)) : null, out = [];
+    for (let i = 0; i < Lc.length; i += 1152) { const m = ch === 2 ? enc.encodeBuffer(Lc.subarray(i, i + 1152), Rc.subarray(i, i + 1152)) : enc.encodeBuffer(Lc.subarray(i, i + 1152)); if (m.length) out.push(new Uint8Array(m)); }
+    const e = enc.flush(); if (e.length) out.push(new Uint8Array(e));
+    return new Blob(out, { type:'audio/mpeg' }); },
   play(from = 0){
     this.stop(); if (!this.mix) return; const a = this.ac(); a.resume && a.resume();
     this.src = a.createBufferSource(); this.src.buffer = this.mix; this.src.connect(a.destination);
@@ -2548,24 +2644,33 @@ const Studio = {
 };
 const stStatus = (t) => { $('stStatus').textContent = t || ''; };
 function stHighlight(i){ $('stLines').querySelectorAll('tr').forEach((tr, k) => tr.classList.toggle('now', k === i)); }
+function stLanes(){ const spk = Studio.cur.speakers, fx = Studio.cur.lines.some(l => l.snd) || (Studio.extras || []).length; return { spk, fx, n: spk.length + (fx ? 1 : 0) }; }
 function stDraw(pos){
-  const cv = $('stTL'), W = cv.width = cv.clientWidth * devicePixelRatio, H = cv.height = 110 * devicePixelRatio, g = cv.getContext('2d'), S = Studio;
-  g.clearRect(0, 0, W, H); const spk = S.cur.speakers, lane = (H - 22 * devicePixelRatio) / Math.max(1, spk.length);
-  const dur = S.mix ? S.mix.duration : 0; g.font = `${11 * devicePixelRatio}px system-ui`; g.fillStyle = '#94a3b8';
-  if (!dur) { g.fillText('▶ Oluştur ve dinle\'ye basınca konuşmalar burada zaman çizelgesi olarak görünür', 10 * devicePixelRatio, H / 2); return; }
-  const x = (t) => t / dur * W;
-  for (let t = 0; t <= dur; t += dur > 60 ? 10 : 5) { g.fillStyle = '#334155'; g.fillRect(x(t), 0, 1, H - 16 * devicePixelRatio); g.fillStyle = '#94a3b8'; g.fillText(fmt(t), x(t) + 3, H - 4 * devicePixelRatio); }
-  S.starts.forEach((b, i) => { if (!b) return; const k = spk.findIndex(s => s.id === b.spk), sp = spk[k] || spk[0];
-    g.fillStyle = sp.color; g.globalAlpha = 0.85; g.fillRect(x(b.s), 4 * devicePixelRatio + k * lane, Math.max(2, x(b.e) - x(b.s)), lane - 6 * devicePixelRatio); g.globalAlpha = 1;
-    g.fillStyle = '#0b1220'; g.fillText(String(i + 1), x(b.s) + 4, 4 * devicePixelRatio + k * lane + 13 * devicePixelRatio); });
+  const cv = $('stTL'), dpr = devicePixelRatio, W = cv.width = cv.clientWidth * dpr, H = cv.height = 130 * dpr, g = cv.getContext('2d'), S = Studio;
+  g.clearRect(0, 0, W, H); const { spk, fx, n } = stLanes(), lane = (H - 22 * dpr) / Math.max(1, n);
+  const dur = S.mix ? S.mix.duration : 0; g.font = `${11 * dpr}px system-ui`; g.fillStyle = '#94a3b8';
+  if (!dur) { g.fillText('▶ Oluştur ve dinle\'ye basınca konuşmalar burada zaman çizelgesi olarak görünür', 10 * dpr, H / 2); return; }
+  const x = (t) => t / dur * W, D = S.drag;
+  for (let t = 0; t <= dur; t += dur > 60 ? 10 : 5) { g.fillStyle = '#334155'; g.fillRect(x(t), 0, 1, H - 16 * dpr); g.fillStyle = '#94a3b8'; g.fillText(fmt(t), x(t) + 3, H - 4 * dpr); }
+  const box = (s, e, k, color, label, alpha = 0.85) => { g.fillStyle = color; g.globalAlpha = alpha; g.fillRect(x(s), 4 * dpr + k * lane, Math.max(2, x(e) - x(s)), lane - 6 * dpr); g.globalAlpha = 1;
+    g.fillStyle = '#0b1220'; g.fillText(label, x(s) + 4, 4 * dpr + k * lane + 13 * dpr); };
+  (S.extras || []).forEach(b => box(b.s, b.e, spk.length, '#64748b', b.label));
+  S.starts.forEach((b, i) => { if (!b) return; const sh = D && D.moved && i >= D.i ? D.d : 0;   // sürüklenen satır ve sonrakiler birlikte kayar
+    const k = b.snd ? spk.length : Math.max(0, spk.findIndex(s => s.id === b.spk)), color = b.snd ? '#94a3b8' : (spk[k] || spk[0]).color;
+    box(b.s + sh, b.e + sh, k, color, String(i + 1), D && D.moved && i === D.i ? 1 : 0.85);
+    if (D && D.moved && i === D.i) { g.strokeStyle = '#facc15'; g.lineWidth = 2 * dpr; g.strokeRect(x(b.s + sh), 4 * dpr + k * lane, Math.max(2, x(b.e) - x(b.s)), lane - 6 * dpr); } });
+  if (fx) { g.fillStyle = '#64748b'; g.fillText('efekt', W - 40 * dpr, 4 * dpr + spk.length * lane + 13 * dpr); }
+  if (D && D.moved) { const t = `Ara: ${(D.gap0 + D.d).toFixed(2).replace('.', ',')} sn${D.gap0 + D.d < 0 ? ' (üst üste)' : ''}`; g.font = `bold ${12 * dpr}px system-ui`;
+    const w = g.measureText(t).width + 12 * dpr; g.fillStyle = 'rgba(11,18,32,.85)'; g.fillRect(W - w - 6 * dpr, 4 * dpr, w, 18 * dpr); g.fillStyle = '#facc15'; g.fillText(t, W - w, 17 * dpr); return; }
   const p = pos == null ? S.pos() : pos;
-  if (p > 0) { g.fillStyle = '#facc15'; g.fillRect(x(p), 0, 2 * devicePixelRatio, H); const cur = S.starts.findIndex(b => b && p >= b.s && p < b.e); stHighlight(cur);
+  if (p > 0) { g.fillStyle = '#facc15'; g.fillRect(x(p), 0, 2 * dpr, H); const cur = S.starts.findIndex(b => b && p >= b.s && p < b.e); stHighlight(cur);
     $('stTime').textContent = `${fmt(p)} / ${fmt(dur)}`; } else $('stTime').textContent = dur ? `Toplam ${fmt(dur)}` : '';
 }
 function stRender(){
   const S = Studio, c = S.cur;
   $('stScen').innerHTML = S.list.map(x => `<option value="${x.id}" ${x.id === c.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
   $('stName').value = c.name; $('stPhone').checked = !!c.phone; $('stNoise').checked = !!c.noise; $('stStereo').checked = !!c.stereo;
+  $('stRing').checked = !!c.ringStart; $('stHang').checked = !!c.hangEnd; $('stNat').value = c.natural || 0; $('stNatV').textContent = c.natural ? '%' + c.natural : 'kapalı';
   $('stSpk').innerHTML = c.speakers.map(s => `<div class="stspk" data-id="${s.id}" style="--c:${s.color}">
       <div class="row"><input type="text" class="s-name" value="${esc(s.name)}"><button class="s-try" title="Bu sesi dene">🔊</button>${c.speakers.length > 1 ? '<button class="s-del" title="Konuşmacıyı sil">✕</button>' : ''}</div>
       <div class="row"><select class="s-preset" title="Hazır seslerden birini uygula"><option value="">${Presets.match(s) ? '' : '— özel ayar —'}</option>${[...new Set(Presets.list.map(p => p.cat))].sort((a, b) => Presets.rank(a) - Presets.rank(b)).map(cat => `<optgroup label="${esc(cat)}">${Presets.list.filter(p => p.cat === cat).map(p => `<option value="${p.id}" ${Presets.match(s) === p ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select>
@@ -2575,25 +2680,35 @@ function stRender(){
       <label>Ton <input type="range" class="s-pitch" min="-30" max="30" step="2" value="${s.pitch || 0}"><span class="v">${Studio.hz(s.pitch || 0)}</span></label>
       <label>Ses <input type="range" class="s-vol" min="-40" max="40" step="5" value="${s.volume || 0}"><span class="v">${Studio.pct(s.volume || 0)}</span></label></div>`).join('');
   const opts = (v) => c.speakers.map(s => `<option value="${s.id}" ${s.id === v ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-  $('stLines').innerHTML = c.lines.map((l, i) => `<tr data-id="${l.id}" style="--c:${S.spk(l.spk).color}">
+  const SND = { ring:['📞 Çalma sesi', 'kez'], hold:['🎵 Bekleme müziği', 'sn'], hangup:['📵 Kapanma sesi', ''], click:['🔌 Bağlanma (klik)', ''] };
+  $('stLines').innerHTML = c.lines.map((l, i) => l.snd ? `<tr data-id="${l.id}" style="--c:#94a3b8">
+      <td class="note" style="padding-top:8px">efekt</td>
+      <td><div class="sndcell">${SND[l.snd][0]}${SND[l.snd][1] ? ` · <input type="number" class="l-sndn" min="1" max="120" value="${l.sndN || { ring:2, hold:8 }[l.snd]}"> ${SND[l.snd][1]}` : ''}</div></td>
+      <td><input type="number" class="l-gap" step="0.1" value="${l.gap ?? 0.3}"></td><td></td>
+      <td class="acts"><button class="l-play" title="Dinle">▶</button><button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Sil">✕</button></td></tr>`
+    : `<tr data-id="${l.id}" style="--c:${S.spk(l.spk).color}">
       <td><select class="l-spk">${opts(l.spk)}</select></td>
-      <td><input type="text" class="l-text" value="${esc(l.text)}" placeholder="Söylenecek cümle" title="Vurgu: kelimeyi seç + Ctrl+B · Duraksama: (2) · Enter: yeni satır"></td>
+      <td><input type="text" class="l-text" value="${esc(l.text)}" placeholder="Söylenecek cümle" title="Vurgu: kelimeyi seç + Ctrl+B · Duraksama: (2) · Enter: yeni satır">${REC.line === l ? '<div class="recinfo">🎙 Kaydediliyor… <span class="micbar"><i></i></span></div>' : l.clip && Lib.get(l.clip) ? `<div class="recinfo">📚 Kütüphaneden: ${esc(Lib.get(l.clip).name)} (${String(Lib.get(l.clip).dur).replace('.', ',')} sn)</div>` : l.rec ? `<div class="recinfo ${l.recText !== l.text ? 'warn' : ''}">🎙 Kendi sesin (${String(l.recDur || '').replace('.', ',')} sn)${l.recText !== l.text ? ' · ⚠ metin kayıttan sonra değişti, yeniden okuman gerekebilir' : ''}</div>` : ''}</td>
       <td><input type="number" class="l-gap" step="0.1" value="${l.gap ?? 0.3}"></td>
       <td><input type="number" class="l-rate" step="5" value="${l.rate || 0}"></td>
-      <td class="acts"><button class="l-play" title="Sadece bu satırı dinle">▶</button><button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Satırı sil">✕</button></td></tr>`).join('');
-  stDraw(0);
+      <td class="acts"><button class="l-play" title="Sadece bu satırı dinle">▶</button><button class="l-rec ${REC.line === l ? 'on' : (l.rec || l.clip) ? 'has' : ''}" title="${REC.line === l ? 'Kaydı bitir' : l.rec ? 'Kendi sesin kayıtlı — yeniden kaydetmek için bas' : 'Bu satırı kendi sesinle kaydet'}">${REC.line === l ? '⏹' : '🎙'}</button>${(l.rec || l.clip) ? '<button class="l-recdel" title="Kaydı kaldır, yapay sese dön">🤖</button>' : ''}<button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Satırı sil">✕</button></td></tr>`).join('');
+  stDraw(0); if (!$('stLib').hidden) libRender();
 }
-function stChanged(redraw){ Studio.mix = null; $('stWav').disabled = true; Studio.save(); if (redraw) stRender(); else stDraw(0); }
+function stChanged(redraw){ Studio.mix = null; $('stWav').disabled = true; $('stMp3').disabled = true; Studio.save(); if (redraw) stRender(); else stDraw(0); }
 async function stMotorCheck(){ const ok = await LocalEngine.ping(); $('stMotor').textContent = ok ? '🟢 Motor açık' : '🔴 Motor kapalı — masaüstündeki "Ses Metin Motoru"nu çalıştır'; return ok; }
 $('studioOpen').onclick = () => { if (!Studio.cur) Studio.load(); $('studio').hidden = false; stRender(); stMotorCheck(); };
 addEventListener('resize', () => { if (!$('studio').hidden) stDraw(Studio.src ? null : 0); });
-$('stClose').onclick = () => { Studio.stop(); $('studio').hidden = true; };
+$('stClose').onclick = async () => { Studio.stop(); if (REC.queue) await stTeleCancel(); else if (REC.line) await stRecStopOne(); $('studio').hidden = true; };
 $('stScen').onchange = () => { Studio.stop(); Studio.cur = Studio.list.find(x => x.id === $('stScen').value); Studio.mix = null; Studio.save(); stRender(); };
 $('stName').oninput = () => { Studio.cur.name = $('stName').value || 'Adsız'; Studio.save(); $('stScen').selectedOptions[0].textContent = Studio.cur.name; };
 $('stNew').onclick = () => { const s = Studio.blank(); s.lines = [{ id:Studio.uid(), spk:s.speakers[0].id, text:'', gap:0.3, rate:0 }]; Studio.list.push(s); Studio.cur = s; stChanged(true); };
 $('stCopy').onclick = () => { const s = JSON.parse(JSON.stringify(Studio.cur)); s.id = Studio.uid(); s.name += ' (kopya)'; Studio.list.push(s); Studio.cur = s; stChanged(true); };
-$('stDel').onclick = () => { if (!confirm(`"${Studio.cur.name}" senaryosu silinsin mi?`)) return; Studio.list = Studio.list.filter(x => x !== Studio.cur); if (!Studio.list.length) Studio.list.push(Studio.blank()); Studio.cur = Studio.list[0]; stChanged(true); };
-['stPhone', 'stNoise', 'stStereo'].forEach((id, k) => $(id).onchange = () => { Studio.cur[['phone', 'noise', 'stereo'][k]] = $(id).checked; stChanged(); });
+$('stDel').onclick = () => { if (!confirm(`"${Studio.cur.name}" senaryosu silinsin mi?`)) return; Studio.list = Studio.list.filter(x => x !== Studio.cur); if (!Studio.list.length) Studio.list.push(Studio.blank()); Studio.cur = Studio.list[0]; stChanged(true); RecDB.gc(); };
+['stPhone', 'stNoise', 'stStereo', 'stRing', 'stHang'].forEach((id, k) => $(id).onchange = () => { Studio.cur[['phone', 'noise', 'stereo', 'ringStart', 'hangEnd'][k]] = $(id).checked; stChanged(); });
+$('stNat').oninput = () => { Studio.cur.natural = +$('stNat').value; $('stNatV').textContent = Studio.cur.natural ? '%' + Studio.cur.natural : 'kapalı'; stChanged(); };
+$('stReseed').onclick = () => { Studio.cur.seed = Math.floor(Math.random() * 1e9); stChanged(); toast('Rastgele farklar yeniden dağıtıldı; Oluştur ile dinle'); };
+document.querySelectorAll('.fxadd').forEach(b => b.onclick = () => { const L = Studio.cur.lines, at = STL.focus ? L.findIndex(l => l.id === STL.focus) + 1 : L.length, t = b.dataset.t;
+  const n = { id:Studio.uid(), spk:Studio.cur.speakers[0].id, text:'', gap:0.3, rate:0, snd:t, sndN:{ ring:2, hold:8 }[t] }; L.splice(at > 0 ? at : L.length, 0, n); STL.focus = n.id; stChanged(true); });
 $('stAddSpk').onclick = () => { const c = Studio.cur, n = c.speakers.length;
   c.speakers.push({ id:Studio.uid(), name:'Konuşmacı ' + (n + 1), voice: n % 2 ? 'tr-TR-AhmetNeural' : 'tr-TR-EmelNeural', rate:10, pitch:(n % 3) * 6 - 6, volume:0, color:ST_COLORS[n % ST_COLORS.length] }); stChanged(true); };
 $('stSpk').addEventListener('input', (e) => { const box = e.target.closest('.stspk'); if (!box) return; const s = Studio.cur.speakers.find(x => x.id === box.dataset.id), c = e.target.classList;
@@ -2621,15 +2736,21 @@ async function stTry(line){
   if (Studio.busy) return; Studio.busy = true; Studio.stop();
   try { stStatus('Seslendiriliyor…'); const b = await Studio.line(line); stStatus(''); if (!b) return; const a = Studio.ac(); a.resume && a.resume(); const s = a.createBufferSource(); s.buffer = b; s.connect(a.destination); s.start(); }
   catch (e) { stStatus('⚠ ' + e.message); stMotorCheck(); } finally { Studio.busy = false; } }
+const STL = { focus:null };
+$('stLines').addEventListener('focusin', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) STL.focus = tr.dataset.id; });
 $('stLines').addEventListener('input', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr) return; const l = Studio.cur.lines.find(x => x.id === tr.dataset.id), c = e.target.classList;
-  if (c.contains('l-text')) l.text = e.target.value; if (c.contains('l-gap')) l.gap = +e.target.value || 0; if (c.contains('l-rate')) l.rate = +e.target.value || 0; stChanged(); });
+  if (c.contains('l-text')) l.text = e.target.value; if (c.contains('l-gap')) l.gap = +e.target.value || 0; if (c.contains('l-rate')) l.rate = +e.target.value || 0;
+  if (c.contains('l-sndn')) l.sndN = Math.max(1, Math.min(120, +e.target.value || 1)); stChanged(); });
 $('stLines').addEventListener('change', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr || !e.target.classList.contains('l-spk')) return;
   Studio.cur.lines.find(x => x.id === tr.dataset.id).spk = e.target.value; stChanged(true); });
 $('stLines').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr) return; const L = Studio.cur.lines, i = L.findIndex(x => x.id === tr.dataset.id);
   if (e.target.closest('.l-play')) { stTry(L[i]); return; }
+  if (e.target.closest('.l-rec')) { if (Mic.active() && REC.line !== L[i]) { toast('Önce süren kaydı bitir'); return; } stRecOne(L[i]); return; }
+  if (e.target.closest('.l-recdel')) { if (!confirm(L[i].clip ? 'Bu satırın kütüphane bağlantısı kaldırılsın mı? (Kütüphanedeki kayıt silinmez)' : 'Bu satırdaki kendi kaydın silinsin mi? Satır yapay sesle okunacak.')) return;
+    delete L[i].clip; delete L[i].rec; delete L[i].recText; delete L[i].recDur; stChanged(true); RecDB.gc(); return; }
   if (e.target.closest('.l-up') && i > 0) [L[i - 1], L[i]] = [L[i], L[i - 1]];
   else if (e.target.closest('.l-down') && i < L.length - 1) [L[i + 1], L[i]] = [L[i], L[i + 1]];
-  else if (e.target.closest('.l-del')) L.splice(i, 1); else return;
+  else if (e.target.closest('.l-del')) { L.splice(i, 1); RecDB.gc(); } else return;
   stChanged(true); });
 // Ctrl+B: seçili kısmı *vurgulu* yap (zaten vurguluysa yıldızları kaldır)
 $('stLines').addEventListener('keydown', (e) => {
@@ -2665,16 +2786,197 @@ $('stImportOk').onclick = () => {
   if (!lines.length) { toast('Aktarılacak satır bulunamadı. Her satır "Konuşmacı: cümle" şeklinde olmalı.'); return; }
   c.lines = $('stImportReplace').checked ? lines : c.lines.concat(lines); $('stImportBox').hidden = true; $('stImportText').value = ''; stChanged(true); toast(`${lines.length} satır aktarıldı`);
 };
-$('stExportTxt').onclick = async () => { const t = Studio.cur.lines.map(l => `${Studio.spk(l.spk).name}: ${l.text}${Math.abs((l.gap ?? 0.3) - 0.3) > 1e-9 ? ` [${l.gap}]` : ''}`).join('\n');
+$('stExportTxt').onclick = async () => { const t = Studio.cur.lines.filter(l => !l.snd).map(l => `${Studio.spk(l.spk).name}: ${l.text}${Math.abs((l.gap ?? 0.3) - 0.3) > 1e-9 ? ` [${l.gap}]` : ''}`).join('\n');
   try { await navigator.clipboard.writeText(t); toast('Senaryo metni kopyalandı'); } catch { $('stImportBox').hidden = false; $('stImportText').value = t; } };
 $('stPlay').onclick = async () => {
   if (Studio.busy) return; Studio.busy = true; $('stPlay').disabled = true;
-  try { if (!Studio.mix) { await Studio.render(); $('stWav').disabled = false; } stStatus(''); Studio.play(0); }
+  try { if (!Studio.mix) { await Studio.render(); } $('stWav').disabled = false; $('stMp3').disabled = false; stStatus(''); Studio.play(0); }
   catch (e) { stStatus('⚠ ' + e.message); stMotorCheck(); } finally { Studio.busy = false; $('stPlay').disabled = false; } };
 $('stStop').onclick = () => Studio.stop();
-$('stTL').onclick = (e) => { if (!Studio.mix) return; const r = $('stTL').getBoundingClientRect(); Studio.play((e.clientX - r.left) / r.width * Studio.mix.duration); };
+$('stTeleBtn').onclick = () => { if (Mic.active()) { toast('Önce süren kaydı bitir'); return; } const box = $('stTeleSetup');
+  box.innerHTML = `<div class="note">Kimin satırlarını okuyacaksın? Okuma ekranında her satır sırayla gösterilir: cümleyi oku, <b>Enter</b>'a bas, sonrakine geç. Mikrofon tüm süre açık kalır; satırlar arasında acele etmene gerek yok.</div>
+    <div class="row">${Studio.cur.speakers.map(s => `<label class="note"><input type="checkbox" class="tele-who" value="${s.id}" checked> <b style="color:${s.color}">${esc(s.name)}</b></label>`).join('')}<span class="sp"></span>
+    <button id="teleSetupCancel">Vazgeç</button><button id="teleGo" class="primary">🎙 Başla</button></div>`;
+  box.hidden = !box.hidden; };
+$('stTeleSetup').addEventListener('click', (e) => { if (e.target.id === 'teleGo') stTeleStart(); if (e.target.id === 'teleSetupCancel') $('stTeleSetup').hidden = true; });
+$('stTele').addEventListener('click', (e) => { if (e.target.id === 'teleNext') stTeleNext(); if (e.target.id === 'teleRedo') { REC.mark = Mic.now(); toast('Bu satırı baştan oku'); } if (e.target.id === 'teleCancel') stTeleCancel(); });
+document.addEventListener('keydown', (e) => {
+  if ($('studio').hidden) return;
+  if (REC.queue) { if (e.key === 'Enter') { e.preventDefault(); stTeleNext(); } else if (e.key === 'Escape') { e.preventDefault(); stTeleCancel(); } else if (e.key.toLowerCase() === 'r' && e.target.tagName !== 'INPUT') { REC.mark = Mic.now(); toast('Bu satırı baştan oku'); } return; }
+  if (REC.line && (e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); e.stopPropagation(); stRecStopOne(); }
+}, true);
+// Zaman çizelgesi: konuşmayı sürükle → arası değişir (sonraki satırlar da birlikte kayar); boş yere tıkla → oradan çal
+function stHit(e){ const S = Studio; if (!S.mix) return null; const cv = $('stTL'), r = cv.getBoundingClientRect(), t = (e.clientX - r.left) / r.width * S.mix.duration;
+  const { spk, n } = stLanes(), laneH = (r.height - 22) / Math.max(1, n), k = Math.floor((e.clientY - r.top - 4) / laneH);
+  const i = S.starts.findIndex((b, j) => b && t >= b.s && t <= b.e && (b.snd ? spk.length : Math.max(0, spk.findIndex(s => s.id === b.spk))) === k);
+  return { t, i, x: e.clientX }; }
+$('stTL').addEventListener('mousedown', (e) => { const h = stHit(e); if (!h) return; e.preventDefault();
+  Studio.drag = { i:h.i, x0:h.x, t0:h.t, d:0, moved:false, gap0: h.i >= 0 ? (+Studio.cur.lines[h.i].gap || 0) : 0 }; });
+addEventListener('mousemove', (e) => { const D = Studio.drag; if (!D || D.i < 0) return; const r = $('stTL').getBoundingClientRect();
+  if (!D.moved && Math.abs(e.clientX - D.x0) < 4) return; D.moved = true; Studio.stop(); $('stTL').classList.add('grab');
+  let d = Math.round((e.clientX - D.x0) / r.width * Studio.mix.duration * 20) / 20;   // 0,05 sn adım
+  const prev = D.i > 0 ? Studio.starts.slice(0, D.i).reverse().find(Boolean) : null, b = Studio.starts[D.i];
+  const minStart = D.i ? (prev ? prev.s + 0.05 : 0) : 0; d = Math.max(d, minStart - b.s);   // önceki konuşmanın başından öteye geçemez
+  D.d = d; stDraw(0); });
+addEventListener('mouseup', async (e) => { const D = Studio.drag; if (!D) return; Studio.drag = null; $('stTL').classList.remove('grab');
+  if (!D.moved) { if (Studio.mix) Studio.play(Math.max(0, D.t)); return; }
+  const L = Studio.cur.lines[D.i]; L.gap = Math.round((D.gap0 + D.d) * 100) / 100; Studio.save();
+  const inp = $('stLines').querySelector(`tr[data-id="${L.id}"] .l-gap`); if (inp) inp.value = L.gap;
+  try { await Studio.render(); stStatus(`✔ ${D.i + 1}. satırın arası ${String(L.gap).replace('.', ',')} sn yapıldı${L.gap < 0 ? ' (üst üste)' : ''}.`); stDraw(0); } catch (err) { stStatus('⚠ ' + err.message); } });
+$('stMp3').onclick = async () => { if (!Studio.mix) return; stStatus('MP3 hazırlanıyor…');
+  try { const blob = await Studio.mp3(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = (Studio.cur.name || 'diyalog').replace(/[\/:*?"<>|]+/g, '_') + '.mp3'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    stStatus(`✔ MP3 indirildi (${(blob.size / 1048576).toFixed(1).replace('.', ',')} MB)`); } catch (e) { stStatus('⚠ ' + e.message); } };
 $('stWav').onclick = () => { if (!Studio.mix) return; const a = document.createElement('a'); a.href = URL.createObjectURL(Studio.wav());
   a.download = (Studio.cur.name || 'diyalog').replace(/[\\/:*?"<>|]+/g, '_') + '.wav'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
+
+
+/* ---------- Stüdyo: kendi sesinle kayıt ----------
+   Kayıtlar ayrı bir tarayıcı veritabanında (ses-metin-studyo) saklanır; satırda kayıt varsa yapay ses yerine o kullanılır. */
+const RecDB = {
+  db:null,
+  open(){ return this.db || (this.db = new Promise((res, rej) => { const r = indexedDB.open('ses-metin-studyo', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('ses'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); })); },
+  async tx(mode, fn){ const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction('ses', mode), st = t.objectStore('ses'); let out; const q = fn(st); if (q) q.onsuccess = () => { out = q.result; }; t.oncomplete = () => res(out); t.onerror = () => rej(t.error); }); },
+  put(k, v){ return this.tx('readwrite', st => st.put(v, k)); },
+  get(k){ return this.tx('readonly', st => st.get(k)); },
+  del(k){ return this.tx('readwrite', st => st.delete(k)); },
+  keys(){ return this.tx('readonly', st => st.getAllKeys()); },
+  // Hiçbir senaryoda kullanılmayan kayıtları sil
+  async gc(){ try { const used = new Set([...Studio.list.flatMap(s => s.lines.map(l => l.rec).filter(Boolean)), ...Lib.list.map(c => c.rec)]); for (const k of await this.keys()) if (!used.has(k)) await this.del(k); } catch {} }
+};
+const Mic = {
+  stream:null, rec:null, chunks:[], t0:0, an:null, raf:0,
+  async start(){
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+    this.chunks = []; this.rec = new MediaRecorder(this.stream); this.rec.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
+    this.rec.start(); this.t0 = performance.now();
+    const a = Studio.ac(); a.resume && a.resume(); const src = a.createMediaStreamSource(this.stream); this.an = a.createAnalyser(); this.an.fftSize = 1024; src.connect(this.an);
+    const buf = new Float32Array(this.an.fftSize), meter = () => { this.an.getFloatTimeDomainData(buf); let m = 0; for (const x of buf) m = Math.max(m, Math.abs(x));
+      document.querySelectorAll('.micbar i').forEach(i => i.style.width = Math.min(100, m * 140) + '%'); this.raf = requestAnimationFrame(meter); }; meter();
+  },
+  now(){ return (performance.now() - this.t0) / 1000; },
+  stop(){ return new Promise((res) => { if (!this.rec) return res(null); cancelAnimationFrame(this.raf);
+    this.rec.onstop = () => { const b = new Blob(this.chunks, { type:this.rec.mimeType || 'audio/webm' }); this.stream.getTracks().forEach(t => t.stop()); this.rec = null; this.stream = null; res(b); };
+    this.rec.stop(); }); },
+  active(){ return !!this.rec; }
+};
+// Ses seviyesini eşitle (yapay seslerle aynı yükseklikte duyulsun)
+function stNormalize(b, peak = 0.8){ const d = b.getChannelData(0); let m = 0; for (const x of d) m = Math.max(m, Math.abs(x)); if (m > 0.01) { const g = Math.min(8, peak / m); for (let i = 0; i < d.length; i++) d[i] *= g; } return b; }
+// Kaydın bir dilimini al (sırayla kayıtta her satır kendi zaman aralığından kesilir)
+function stSlice(b, s, e){ const a = Math.max(0, Math.floor(s * b.sampleRate)), z = Math.min(b.length, Math.ceil(e * b.sampleRate)); const o = Studio.ac().createBuffer(1, Math.max(1, z - a), b.sampleRate);
+  o.copyToChannel(b.getChannelData(0).slice(a, z), 0); return o; }
+async function stSaveRec(line, buf){
+  // Tek kanala indir, 24 kHz'e çevir, kırp, seviye eşitle; WAV olarak sakla
+  const oc = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration * ST_SR)), ST_SR), s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start();
+  const out = stNormalize(Studio.trim(await oc.startRendering(), 0.02, 0.06));
+  if (out.duration < 0.25) throw new Error('Kayıtta ses bulunamadı (mikrofon sessiz mi?)');
+  const old = line.rec, id = 'r' + Studio.uid() + Date.now().toString(36);
+  const prevMix = Studio.mix; Studio.mix = out; const wav = Studio.wav(); Studio.mix = prevMix;
+  await RecDB.put(id, wav); Studio.recBufs.set(id, out); line.rec = id; line.recText = line.text; line.recDur = +out.duration.toFixed(1); delete line.clip;
+  if (old) RecDB.gc();
+}
+const REC = { line:null, queue:null, i:0, mark:0, marks:[] };
+async function stRecOne(line){
+  if (Mic.active()) { await stRecStopOne(); return; }
+  try { await Mic.start(); } catch (e) { toast('Mikrofona erişilemedi: ' + (e.message || e)); return; }
+  REC.line = line; Studio.stop(); stRender(); stStatus('🎙 Kaydediliyor… Cümleyi oku, bitince tekrar 🎙 düğmesine bas (ya da Enter).');
+}
+async function stRecStopOne(){
+  const line = REC.line; REC.line = null; const blob = await Mic.stop(); stStatus('Kayıt işleniyor…');
+  try { const buf = await Studio.ac().decodeAudioData(await blob.arrayBuffer()); await stSaveRec(line, buf); stChanged(true); stStatus(`✔ Kaydedildi (${String(line.recDur).replace(".", ",")} sn). Bu satırda artık senin sesin kullanılacak.`); }
+  catch (e) { stStatus('⚠ ' + e.message); stRender(); }
+}
+// Sırayla kayıt: okuma ekranında satırlar tek tek gösterilir; Enter → sonraki satır
+function stTeleShow(){
+  const c = Studio.cur, q = REC.queue, box = $('stTele');
+  if (!q) { box.hidden = true; return; }
+  const l = c.lines[q[REC.i]], sp = Studio.spk(l.spk);
+  box.hidden = false; box.style.setProperty('--c', sp.color);
+  box.innerHTML = `<div class="row"><b style="color:${sp.color}">${esc(sp.name)}</b><span class="note">Satır ${REC.i + 1} / ${q.length}</span><span class="sp"></span><span class="micbar"><i></i></span></div>
+    <div class="tele-text">${esc(l.text).replace(/\*([^*]+)\*/g, '<u>$1</u>').replace(/\(\s*(\d+(?:[.,]\d+)?)\s*(?:sn|saniye)?\s*\)/gi, '<span class="note">⏸ $1 sn</span>')}</div>
+    ${REC.i + 1 < q.length ? `<div class="note">Sıradaki: ${esc(Studio.spk(c.lines[q[REC.i + 1]].spk).name)} — ${esc(c.lines[q[REC.i + 1]].text.slice(0, 80))}</div>` : '<div class="note">Bu son satır.</div>'}
+    <div class="row"><button id="teleNext" class="primary">${REC.i + 1 < q.length ? '⏭ Sonraki (Enter)' : '✔ Bitir (Enter)'}</button><button id="teleRedo" title="Bu satırı baştan oku">↺ Bu satırı tekrar (R)</button><span class="sp"></span><button id="teleCancel">✕ Vazgeç (Esc)</button></div>`;
+  stHighlight(q[REC.i]); const tr = $('stLines').querySelectorAll('tr')[q[REC.i]]; tr && tr.scrollIntoView({ block:'nearest' });
+}
+async function stTeleStart(){
+  const who = [...document.querySelectorAll('.tele-who:checked')].map(x => x.value), c = Studio.cur;
+  const q = c.lines.map((l, i) => [l, i]).filter(([l]) => who.includes(l.spk) && /[\p{L}\p{N}]/u.test(l.text)).map(([, i]) => i);
+  if (!q.length) { toast('Seçilen konuşmacıların satırı yok'); return; }
+  try { await Mic.start(); } catch (e) { toast('Mikrofona erişilemedi: ' + (e.message || e)); return; }
+  Studio.stop(); $('stTeleSetup').hidden = true; REC.queue = q; REC.i = 0; REC.marks = []; REC.mark = Mic.now(); stTeleShow();
+}
+async function stTeleNext(){ REC.marks.push([REC.queue[REC.i], REC.mark, Mic.now()]); REC.i++; REC.mark = Mic.now();
+  if (REC.i < REC.queue.length) { stTeleShow(); return; }
+  const marks = REC.marks; REC.queue = null; stTeleShow(); stStatus('Kayıtlar işleniyor…');
+  try { const all = await Studio.ac().decodeAudioData(await (await Mic.stop()).arrayBuffer()); let ok = 0, bad = 0;
+    for (const [li, s, e] of marks) { try { await stSaveRec(Studio.cur.lines[li], stSlice(all, Math.max(0, s - 0.15), e + 0.1)); ok++; } catch { bad++; } }
+    stChanged(true); stStatus(`✔ ${ok} satır kaydedildi${bad ? `, ${bad} satırda ses bulunamadı` : ''}.`); }
+  catch (e) { stStatus('⚠ ' + e.message); }
+}
+async function stTeleCancel(){ REC.queue = null; stTeleShow(); await Mic.stop(); stStatus('Sırayla kayıt iptal edildi.'); stHighlight(-1); }
+
+
+/* ---------- Ses kütüphanesi: bir kez kaydedip her senaryoda kullanılan sesler ---------- */
+const Lib = {
+  KEY:'ses-metin-kutuphane', list:[],
+  load(){ try { this.list = JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch { this.list = []; } },
+  save(){ try { localStorage.setItem(this.KEY, JSON.stringify(this.list)); } catch {} },
+  get(id){ return this.list.find(c => c.id === id); }
+};
+Lib.load();
+// Ham kaydı işle (tek kanal, 24 kHz, kırp, seviye eşitle) ve sakla → { id, dur, buf }
+async function stStoreAudio(buf, { trim = true, norm = true } = {}){
+  const oc = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration * ST_SR)), ST_SR), s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start();
+  let out = await oc.startRendering(); if (trim) out = Studio.trim(out, 0.02, 0.06); if (norm) out = stNormalize(out);
+  if (out.duration < 0.25) throw new Error('Kayıtta ses bulunamadı (mikrofon sessiz mi?)');
+  const id = 'r' + Studio.uid() + Date.now().toString(36), prevMix = Studio.mix; Studio.mix = out; const wav = Studio.wav(); Studio.mix = prevMix;
+  await RecDB.put(id, wav); Studio.recBufs.set(id, out); return { id, dur: +out.duration.toFixed(1), buf: out };
+}
+const LIBREC = { on:false };
+function libRender(){
+  const sp = Studio.cur.speakers;
+  $('stLibWho').innerHTML = sp.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  $('stLibList').innerHTML = Lib.list.map(c => `<div class="libitem" data-id="${c.id}"><div class="row"><b>${esc(c.name)}</b><span class="note">${String(c.dur || '').replace('.', ',')} sn</span><span class="sp"></span>
+      <button class="lb-play" title="Dinle">▶</button><button class="lb-add primary" title="Senaryoya ekle">＋ Ekle</button><button class="lb-redo" title="Yeniden kaydet (kullanıldığı tüm senaryolar güncellenir)">🎙</button><button class="lb-del" title="Kütüphaneden sil">🗑</button></div>
+      ${c.text ? `<div class="note">${esc(c.text)}</div>` : ''}</div>`).join('') || '<div class="note">Henüz kayıt yok. Açılış, kapanış gibi sık söylenen cümleleri bir kez kaydet, her senaryoya tek tıkla ekle.</div>';
+}
+async function libCreate(fromFile){
+  const name = $('stLibName').value.trim(), text = $('stLibText').value.trim(), kal = $('stLibKal').value;
+  if (!name) { toast('Önce kayda bir ad ver (ör. Açılış anonsu)'); $('stLibName').focus(); return; }
+  let buf;
+  try {
+    if (fromFile) { const f = $('stLibFile').files[0]; if (!f) return; buf = await Studio.ac().decodeAudioData(await f.arrayBuffer()); $('stLibFile').value = ''; }
+    else if (!LIBREC.on) { await Mic.start(); LIBREC.on = true; $('stLibRec').textContent = '⏹ Bitir'; $('stLibRec').classList.add('rec-on'); stStatus('🎙 Kütüphane kaydı… Cümleyi oku, bitince ⏹ Bitir.'); return; }
+    else { LIBREC.on = false; $('stLibRec').textContent = '🎙 Kaydet'; $('stLibRec').classList.remove('rec-on'); buf = await Studio.ac().decodeAudioData(await (await Mic.stop()).arrayBuffer()); }
+    const r = await stStoreAudio(buf, { trim: !fromFile, norm: !fromFile });
+    Lib.list.push({ id:Studio.uid(), name, text, rec:r.id, dur:r.dur, file: !!fromFile }); Lib.save();
+    if (kal && text) { Kalip.merge([Kalip.mk(text, kal, 'P', true, Kalip.yerFromGrp(kal))]); afterDictChange(); }
+    $('stLibName').value = ''; $('stLibText').value = ''; libRender(); stStatus(`✔ "${name}" kütüphaneye eklendi${kal && text ? ', metni kalıplara da eklendi' : ''}.`);
+  } catch (e) { LIBREC.on = false; $('stLibRec').textContent = '🎙 Kaydet'; $('stLibRec').classList.remove('rec-on'); stStatus('⚠ ' + (e.message || e)); }
+}
+const LIBREDO = { id:null };
+$('stLibRec').onclick = () => { if (Mic.active() && !LIBREC.on) { toast('Önce süren kaydı bitir'); return; } libCreate(false); };
+$('stLibFileBtn').onclick = () => $('stLibFile').click();
+$('stLibFile').onchange = () => { if (!$('stLibName').value.trim()) $('stLibName').value = ($('stLibFile').files[0] || {}).name?.replace(/\.[^.]+$/, '') || ''; libCreate(true); };
+$('stLibToggle').onclick = () => { $('stLib').hidden = !$('stLib').hidden; if (!$('stLib').hidden) libRender(); };
+$('stLibList').addEventListener('click', async (e) => {
+  const it = e.target.closest('.libitem'); if (!it) return; const c = Lib.get(it.dataset.id); if (!c) return;
+  if (e.target.closest('.lb-play')) { const b = await Studio.recBuf(c.rec); if (!b) return; Studio.stop(); const a = Studio.ac(); a.resume && a.resume(); const s = a.createBufferSource(); s.buffer = b; s.connect(a.destination); s.start(); return; }
+  if (e.target.closest('.lb-add')) { const L = Studio.cur.lines, at = STL.focus ? L.findIndex(l => l.id === STL.focus) + 1 : L.length;
+    const n = { id:Studio.uid(), spk:$('stLibWho').value || Studio.cur.speakers[0].id, text:c.text || c.name, gap:0.3, rate:0, clip:c.id };
+    L.splice(at > 0 ? at : L.length, 0, n); STL.focus = n.id; stChanged(true); toast(`"${c.name}" senaryoya eklendi`); return; }
+  if (e.target.closest('.lb-del')) { const used = Studio.list.some(s => s.lines.some(l => l.clip === c.id));
+    if (!confirm(`"${c.name}" kütüphaneden silinsin mi?${used ? ' Kullanıldığı satırlar yapay sese döner.' : ''}`)) return;
+    Studio.list.forEach(s => s.lines.forEach(l => { if (l.clip === c.id) delete l.clip; })); Lib.list = Lib.list.filter(x => x !== c); Lib.save(); stChanged(true); libRender(); RecDB.gc(); return; }
+  if (e.target.closest('.lb-redo')) {
+    if (LIBREDO.id === c.id) { LIBREDO.id = null; it.querySelector('.lb-redo').textContent = '🎙';
+      try { const r = await stStoreAudio(await Studio.ac().decodeAudioData(await (await Mic.stop()).arrayBuffer())); c.rec = r.id; c.dur = r.dur; Lib.save(); Studio.mix = null; RecDB.gc(); libRender(); stRender(); stStatus(`✔ "${c.name}" yeniden kaydedildi; kullanıldığı tüm senaryolar güncellendi.`); }
+      catch (err) { stStatus('⚠ ' + err.message); } return; }
+    if (Mic.active()) { toast('Önce süren kaydı bitir'); return; }
+    try { await Mic.start(); LIBREDO.id = c.id; e.target.closest('.lb-redo').textContent = '⏹'; stStatus(`🎙 "${c.name}" yeniden kaydediliyor… Bitince ⏹'a bas.`); } catch (err) { toast('Mikrofona erişilemedi: ' + err.message); }
+  }
+});
 
 </script>
 </body>

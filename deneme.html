@@ -143,6 +143,7 @@
   .stcol h3{font-size:13px;margin:6px 0 0;color:var(--muted);font-weight:600}
   .stspk{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--panel2)}
   .stspk .row input[type=text]{flex:1;min-width:80px}
+  .stspk .row select.s-preset{flex:1;min-width:0}
   .stspk label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
   .stspk input[type=range]{flex:1}
   .stspk .v{min-width:46px;text-align:right;font-variant-numeric:tabular-nums}
@@ -352,7 +353,8 @@
         <label class="row note"><input type="checkbox" id="stNoise"> Hat hışırtısı</label>
         <label class="row note" title="İlk konuşmacı sol, diğerleri sağ kanalda — gerçek çağrı kayıtları gibi. Bu dosyayı ses → metin tarafına yükleyip deneyebilirsin."><input type="checkbox" id="stStereo"> Stereo (çağrı kaydı gibi)</label>
         <div class="note">Hız ve ton ayarları her konuşmacının sesine uygulanır. Satırdaki hız, konuşmacınınkine eklenir.<br>
-          Metinde <code>*kelime*</code> yazarsan o kısım vurgulu (biraz yavaş, yüksek ve öncesinde kısa duraksamayla) okunur.<br>
+          Metinde <code>*kelime*</code> yazarsan (ya da kelimeyi seçip <b>Ctrl+B</b>'ye basarsan) o kısım vurgulu (biraz yavaş, yüksek ve öncesinde kısa duraksamayla) okunur.<br>
+          Cümlenin içine <code>(2)</code> ya da <code>(1,5)</code> yazarsan orada o kadar saniye bekler: <code>Bir saniye (2) tamam, buldum.</code><br>
           <b>Ara</b>: önceki konuşma bittikten kaç saniye sonra başlasın. <b>Eksi</b> değer üst üste konuşma demek (−0,8 = önceki bitmeden 0,8 sn önce girer).</div>
       </div>
       <div class="stcol stmain">
@@ -364,7 +366,7 @@
           <textarea id="stImportText" spellcheck="false" style="min-height:140px" placeholder="Personel: İletişim merkezine hoş geldiniz, size nasıl yardımcı olabilirim?&#10;Vatandaş: Merhaba, *yaşlılık maaşımı* ne zaman alabilirim?&#10;Personel: Hemen kontrol ediyorum. [0.5]&#10;Vatandaş: Geçen ay da… [-0.6]"></textarea>
           <div class="row"><label class="note"><input type="checkbox" id="stImportReplace" checked> Mevcut satırların yerine koy</label><span class="sp"></span><button id="stImportCancel">Vazgeç</button><button id="stImportOk" class="primary">Aktar</button></div>
         </div>
-        <div class="dtwrap stlines"><table class="dt"><thead><tr><th style="width:130px">Konuşan</th><th>Söylenen (vurgu: *kelime*)</th><th style="width:84px" title="Önceki konuşmadan sonra kaç sn; eksi = üst üste">Ara (sn)</th><th style="width:76px" title="Bu satıra özel hız farkı (%)">Hız ±%</th><th style="width:118px"></th></tr></thead><tbody id="stLines"></tbody></table></div>
+        <div class="dtwrap stlines"><table class="dt"><thead><tr><th style="width:130px">Konuşan</th><th>Söylenen (vurgu: *kelime* · duraksama: (2))</th><th style="width:84px" title="Önceki konuşmadan sonra kaç sn; eksi = üst üste">Ara (sn)</th><th style="width:76px" title="Bu satıra özel hız farkı (%)">Hız ±%</th><th style="width:118px"></th></tr></thead><tbody id="stLines"></tbody></table></div>
         <div class="row"><button id="stAddLine">＋ Satır</button><span class="sp"></span><span class="note" id="stStatus"></span></div>
         <canvas id="stTL" height="110"></canvas>
         <div class="row"><button id="stPlay" class="primary">▶ Oluştur ve dinle</button><button id="stStop" disabled>⏹ Durdur</button>
@@ -2409,6 +2411,39 @@ function stGuessVoice(name, n){ const t = trLow(name || '');
   if (/(amca|dayı|bey|baba|abi|ağabey|dede|oğul|adam|erkek|bay\b|enişte)/.test(t)) return 'tr-TR-AhmetNeural';
   if (/(teyze|hala|hanım|anne|abla|nine|kız|kadın|bayan|yenge)/.test(t)) return 'tr-TR-EmelNeural';
   return n % 2 ? 'tr-TR-AhmetNeural' : 'tr-TR-EmelNeural'; }
+// Hazır sesler: ayarladığın bir sesi (ses + hız + ton + yükseklik) adıyla saklar, tüm senaryolarda kullanılır
+const Presets = {
+  KEY:'ses-metin-hazir-sesler', list:[],
+  MINE:'Kendi seslerim', VER:2,
+  ORDER:['Kendi seslerim', 'Personel', 'Vatandaş · kadın', 'Vatandaş · erkek', 'Çocuk ve genç', 'Farklı sesler (deneysel, aksanlı olabilir)'],
+  rank(c){ const i = this.ORDER.indexOf(c); return i < 0 ? 50 : i; },
+  // Hazır başlangıç sesleri: sadece iki Türkçe ses var (Emel, Ahmet); çeşitlilik hız, ton ve yükseklikle sağlanıyor.
+  defaults(){ const E = 'tr-TR-EmelNeural', A = 'tr-TR-AhmetNeural', out = [];
+    const g = (cat, rows) => rows.forEach(([name, voice, rate, pitch, volume = 0]) => out.push({ id:Math.random().toString(36).slice(2, 9), cat, name, voice, rate, pitch, volume }));
+    g('Personel', [['Personel · kadın', E, 10, 0], ['Personel · erkek', A, 10, 0], ['Personel · sakin kadın', E, 0, -2, -5], ['Personel · güler yüzlü kadın', E, 12, 6],
+      ['Personel · tecrübeli erkek', A, 0, -6], ['Personel · hızlı konuşan', E, 30, 2], ['Personel · yorgun', A, -10, -8, -10]]);
+    g('Vatandaş · kadın', [['Genç kadın', E, 15, 6], ['Orta yaşlı kadın', E, 5, -4], ['Yaşlı teyze', E, -10, -8], ['Çok yaşlı nine', E, -25, -14, -10],
+      ['Telaşlı vatandaş', E, 30, 8, 5], ['Sinirli kadın', E, 20, 4, 20], ['Çekingen kadın', E, -5, 2, -25], ['Üzgün kadın', E, -15, -6, -15]]);
+    g('Vatandaş · erkek', [['Genç erkek', A, 15, 6], ['Orta yaşlı erkek', A, 5, -2], ['Yaşlı amca', A, -10, -12], ['Çok yaşlı dede', A, -25, -18, -5],
+      ['Sinirli vatandaş', A, 25, 4, 15], ['Bağıran vatandaş', A, 20, 8, 35], ['Telaşlı erkek', A, 30, 6, 5], ['Kararsız erkek', A, -15, -4, -10], ['Çekingen erkek', A, -5, 0, -25]]);
+    g('Çocuk ve genç', [['Çocuk · kız', E, 15, 28], ['Çocuk · erkek', E, 10, 18], ['Ergen · erkek', A, 20, 16]]);
+    g('Farklı sesler (deneysel, aksanlı olabilir)', [['Farklı kadın sesi 1', 'en-US-AvaMultilingualNeural', 5, 0], ['Farklı kadın sesi 2', 'de-DE-SeraphinaMultilingualNeural', 0, 0],
+      ['Farklı erkek sesi 1', 'en-US-AndrewMultilingualNeural', 0, 0], ['Farklı erkek sesi 2', 'en-US-BrianMultilingualNeural', 0, 0]]);
+    return out; },
+  load(){
+    let l = null, v = 0; try { l = JSON.parse(localStorage.getItem(this.KEY) || 'null'); v = +localStorage.getItem(this.KEY + '-v') || 0; } catch {}
+    const D = this.defaults();
+    if (!Array.isArray(l)) l = D;
+    else if (v < this.VER) {   // yeni örnek sesler eklenir; senin kaydettiklerin ve değiştirdiklerin korunur
+      for (const d of D) { const ex = l.find(x => trLow(x.name) === trLow(d.name)); if (ex) ex.cat = ex.cat || d.cat; else l.push(d); }
+    }
+    for (const x of l) if (!x.cat) x.cat = this.MINE;
+    this.list = l; this.save(); try { localStorage.setItem(this.KEY + '-v', this.VER); } catch {} },
+  save(){ try { localStorage.setItem(this.KEY, JSON.stringify(this.list)); } catch {} },
+  match(s){ return this.list.find(p => p.voice === s.voice && p.rate === (s.rate || 0) && p.pitch === (s.pitch || 0) && p.volume === (s.volume || 0)); },
+  byName(name){ const t = trLow(name || '').trim(); return this.list.find(p => trLow(p.name) === t); }
+};
+Presets.load();
 const Studio = {
   KEY:'ses-metin-senaryolar', list:[], cur:null, bufs:new Map(), ctx:null, mix:null, starts:[], src:null, t0:0, off:0, raf:0, busy:false,
   uid(){ return Math.random().toString(36).slice(2, 9); },
@@ -2427,9 +2462,11 @@ const Studio = {
   spk(id){ return this.cur.speakers.find(s => s.id === id) || this.cur.speakers[0]; },
   pct: (v) => (v >= 0 ? '+' : '') + Math.round(v) + '%',
   hz: (v) => (v >= 0 ? '+' : '') + Math.round(v) + 'Hz',
-  // Bir satırı parçalara ayır: *vurgulu* kısımlar ayrı ayarla okunur
+  // Bir satırı parçalara ayır: *vurgulu* kısımlar ayrı ayarla okunur, (1,5) gibi parantez içindeki sayı o kadar saniye duraksama
   parts(line){ const sp = this.spk(line.spk), base = (sp.rate || 0) + (line.rate || 0), out = [];
-    for (const seg of (line.text || '').split(/(\*[^*]+\*)/)) {
+    for (const seg of (line.text || '').split(/(\*[^*]+\*|\(\s*\d+(?:[.,]\d+)?\s*(?:sn|saniye)?\s*\))/i)) {
+      const pm = seg.match(/^\(\s*(\d+(?:[.,]\d+)?)\s*(?:sn|saniye)?\s*\)$/i);
+      if (pm) { out.push({ pause: Math.min(30, +pm[1].replace(',', '.')) }); continue; }
       const emph = /^\*[^*]+\*$/.test(seg), text = (emph ? seg.slice(1, -1) : seg).trim(); if (!/[\p{L}\p{N}]/u.test(text)) continue;
       out.push({ emph, text, voice:sp.voice, rate:this.pct(emph ? base - 15 : base), pitch:this.hz((sp.pitch || 0) + (emph ? 8 : 0)), volume:this.pct((sp.volume || 0) + (emph ? 20 : 0)) });
     }
@@ -2449,11 +2486,17 @@ const Studio = {
     a = Math.max(0, a - Math.round(keep * b.sampleRate)); z = Math.min(d.length - 1, z + Math.round(keep * b.sampleRate));
     const o = this.ac().createBuffer(1, Math.max(1, z - a + 1), b.sampleRate); o.copyToChannel(d.slice(a, z + 1), 0); return o; },
   async line(line){
-    const ps = this.parts(line); if (!ps.length) return null;
-    const bs = []; for (const p of ps) bs.push(await this.part(p));
-    const gap = Math.round(0.12 * ST_SR); let len = 0; bs.forEach((b, i) => { len += b.length + (i && ps[i].emph ? gap : 0) + (i && ps[i - 1].emph ? Math.round(gap / 2) : 0); });
-    const o = this.ac().createBuffer(1, len, ST_SR), d = o.getChannelData(0); let k = 0;
-    bs.forEach((b, i) => { if (i && ps[i].emph) k += gap; if (i && ps[i - 1].emph) k += Math.round(gap / 2); d.set(b.getChannelData(0), k); k += b.length; });
+    const ps = this.parts(line); if (!ps.some(p => p.pause == null)) return null;
+    // Sıra: ses parçaları + sessizlikler. Vurgudan önce kısa, sonra daha kısa boşluk; (sayı) kadar duraksama
+    const seq = []; let prev = null;
+    for (const p of ps) {
+      if (p.pause != null) { seq.push(Math.round(p.pause * ST_SR)); prev = null; continue; }
+      if (prev && p.emph) seq.push(Math.round(0.12 * ST_SR)); else if (prev && prev.emph) seq.push(Math.round(0.06 * ST_SR));
+      seq.push(await this.part(p)); prev = p;
+    }
+    const len = seq.reduce((a, x) => a + (typeof x === 'number' ? x : x.length), 0);
+    const o = this.ac().createBuffer(1, Math.max(1, len), ST_SR), d = o.getChannelData(0); let k = 0;
+    for (const x of seq) { if (typeof x === 'number') k += x; else { d.set(x.getChannelData(0), k); k += x.length; } }
     return o; },
   // Zaman çizelgesi: her satır önceki satırın bitişine göre (ara eksiyse üst üste) başlar
   layout(bufs){ const st = []; let end = 0;
@@ -2525,6 +2568,8 @@ function stRender(){
   $('stName').value = c.name; $('stPhone').checked = !!c.phone; $('stNoise').checked = !!c.noise; $('stStereo').checked = !!c.stereo;
   $('stSpk').innerHTML = c.speakers.map(s => `<div class="stspk" data-id="${s.id}" style="--c:${s.color}">
       <div class="row"><input type="text" class="s-name" value="${esc(s.name)}"><button class="s-try" title="Bu sesi dene">🔊</button>${c.speakers.length > 1 ? '<button class="s-del" title="Konuşmacıyı sil">✕</button>' : ''}</div>
+      <div class="row"><select class="s-preset" title="Hazır seslerden birini uygula"><option value="">${Presets.match(s) ? '' : '— özel ayar —'}</option>${[...new Set(Presets.list.map(p => p.cat))].sort((a, b) => Presets.rank(a) - Presets.rank(b)).map(cat => `<optgroup label="${esc(cat)}">${Presets.list.filter(p => p.cat === cat).map(p => `<option value="${p.id}" ${Presets.match(s) === p ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select>
+        <button class="s-psave" title="Bu ayarı hazır ses olarak kaydet">💾</button>${Presets.match(s) ? '<button class="s-pdel" title="Seçili hazır sesi listeden sil">🗑</button>' : ''}</div>
       <select class="s-voice">${ST_VOICES.map(([v, t]) => `<option value="${v}" ${v === s.voice ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <label>Hız <input type="range" class="s-rate" min="-40" max="60" step="5" value="${s.rate || 0}"><span class="v">${Studio.pct(s.rate || 0)}</span></label>
       <label>Ton <input type="range" class="s-pitch" min="-30" max="30" step="2" value="${s.pitch || 0}"><span class="v">${Studio.hz(s.pitch || 0)}</span></label>
@@ -2532,7 +2577,7 @@ function stRender(){
   const opts = (v) => c.speakers.map(s => `<option value="${s.id}" ${s.id === v ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
   $('stLines').innerHTML = c.lines.map((l, i) => `<tr data-id="${l.id}" style="--c:${S.spk(l.spk).color}">
       <td><select class="l-spk">${opts(l.spk)}</select></td>
-      <td><input type="text" class="l-text" value="${esc(l.text)}" placeholder="Söylenecek cümle"></td>
+      <td><input type="text" class="l-text" value="${esc(l.text)}" placeholder="Söylenecek cümle" title="Vurgu: kelimeyi seç + Ctrl+B · Duraksama: (2) · Enter: yeni satır"></td>
       <td><input type="number" class="l-gap" step="0.1" value="${l.gap ?? 0.3}"></td>
       <td><input type="number" class="l-rate" step="5" value="${l.rate || 0}"></td>
       <td class="acts"><button class="l-play" title="Sadece bu satırı dinle">▶</button><button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Satırı sil">✕</button></td></tr>`).join('');
@@ -2540,7 +2585,8 @@ function stRender(){
 }
 function stChanged(redraw){ Studio.mix = null; $('stWav').disabled = true; Studio.save(); if (redraw) stRender(); else stDraw(0); }
 async function stMotorCheck(){ const ok = await LocalEngine.ping(); $('stMotor').textContent = ok ? '🟢 Motor açık' : '🔴 Motor kapalı — masaüstündeki "Ses Metin Motoru"nu çalıştır'; return ok; }
-$('studioOpen').onclick = () => { if (!Studio.cur) Studio.load(); stRender(); $('studio').hidden = false; stMotorCheck(); };
+$('studioOpen').onclick = () => { if (!Studio.cur) Studio.load(); $('studio').hidden = false; stRender(); stMotorCheck(); };
+addEventListener('resize', () => { if (!$('studio').hidden) stDraw(Studio.src ? null : 0); });
 $('stClose').onclick = () => { Studio.stop(); $('studio').hidden = true; };
 $('stScen').onchange = () => { Studio.stop(); Studio.cur = Studio.list.find(x => x.id === $('stScen').value); Studio.mix = null; Studio.save(); stRender(); };
 $('stName').oninput = () => { Studio.cur.name = $('stName').value || 'Adsız'; Studio.save(); $('stScen').selectedOptions[0].textContent = Studio.cur.name; };
@@ -2556,11 +2602,20 @@ $('stSpk').addEventListener('input', (e) => { const box = e.target.closest('.sts
   if (c.contains('s-pitch')) { s.pitch = +e.target.value; e.target.nextElementSibling.textContent = Studio.hz(s.pitch); }
   if (c.contains('s-vol')) { s.volume = +e.target.value; e.target.nextElementSibling.textContent = Studio.pct(s.volume); }
   stChanged(); });
-$('stSpk').addEventListener('change', (e) => { const box = e.target.closest('.stspk'); if (!box || !e.target.classList.contains('s-voice')) return;
-  Studio.cur.speakers.find(x => x.id === box.dataset.id).voice = e.target.value; stChanged(); });
+$('stSpk').addEventListener('change', (e) => { if (e.target.matches('.s-rate,.s-pitch,.s-vol')) stRender(); });   // kaydırıcı bırakılınca hazır ses etiketi güncellensin
+$('stSpk').addEventListener('change', (e) => { const box = e.target.closest('.stspk'); if (!box) return; const s = Studio.cur.speakers.find(x => x.id === box.dataset.id);
+  if (e.target.classList.contains('s-voice')) { s.voice = e.target.value; stChanged(true); }
+  if (e.target.classList.contains('s-preset') && e.target.value) { const p = Presets.list.find(x => x.id === e.target.value); Object.assign(s, { voice:p.voice, rate:p.rate, pitch:p.pitch, volume:p.volume }); stChanged(true); } });
 $('stSpk').addEventListener('click', async (e) => { const box = e.target.closest('.stspk'); if (!box) return; const c = Studio.cur, s = c.speakers.find(x => x.id === box.dataset.id);
   if (e.target.closest('.s-del')) { if (c.lines.some(l => l.spk === s.id) && !confirm(`"${s.name}" konuşmacısının satırları ilk konuşmacıya geçecek. Silinsin mi?`)) return;
     c.speakers = c.speakers.filter(x => x !== s); c.lines.forEach(l => { if (l.spk === s.id) l.spk = c.speakers[0].id; }); stChanged(true); }
+  if (e.target.closest('.s-psave')) {
+    const ex = Presets.match(s), name = prompt('Bu ses ayarı hangi adla kaydedilsin?', ex ? ex.name : s.name); if (!name || !name.trim()) return;
+    const same = Presets.byName(name), vals = { voice:s.voice, rate:s.rate || 0, pitch:s.pitch || 0, volume:s.volume || 0 };
+    if (same) { if (!confirm(`"${same.name}" adında bir hazır ses var. Üzerine yazılsın mı?`)) return; Object.assign(same, vals); }
+    else Presets.list.push({ id:Studio.uid(), cat:Presets.MINE, name:name.trim(), ...vals });
+    Presets.save(); stRender(); toast(`"${name.trim()}" hazır ses olarak kaydedildi`); return; }
+  if (e.target.closest('.s-pdel')) { const p = Presets.match(s); if (p && confirm(`"${p.name}" hazır sesi listeden silinsin mi? (Konuşmacının ayarı değişmez)`)) { Presets.list = Presets.list.filter(x => x !== p); Presets.save(); stRender(); } return; }
   if (e.target.closest('.s-try')) stTry({ id:'deneme', spk:s.id, text:`Merhaba, ben ${s.name}. Size nasıl yardımcı olabilirim?`, gap:0, rate:0 }); });
 async function stTry(line){
   if (Studio.busy) return; Studio.busy = true; Studio.stop();
@@ -2576,6 +2631,18 @@ $('stLines').addEventListener('click', (e) => { const tr = e.target.closest('tr[
   else if (e.target.closest('.l-down') && i < L.length - 1) [L[i + 1], L[i]] = [L[i], L[i + 1]];
   else if (e.target.closest('.l-del')) L.splice(i, 1); else return;
   stChanged(true); });
+// Ctrl+B: seçili kısmı *vurgulu* yap (zaten vurguluysa yıldızları kaldır)
+$('stLines').addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b' || !e.target.classList.contains('l-text')) return;
+  e.preventDefault(); const el = e.target, v = el.value; let a = el.selectionStart, z = el.selectionEnd;
+  if (a === z) { while (a > 0 && /[\p{L}\p{N}'’]/u.test(v[a - 1])) a--; while (z < v.length && /[\p{L}\p{N}'’]/u.test(v[z])) z++; }   // seçim yoksa imlecin olduğu kelime
+  while (a < z && v[a] === ' ') a++; while (z > a && v[z - 1] === ' ') z--; if (a === z) return;
+  let nv, na, nz;
+  if (v[a - 1] === '*' && v[z] === '*') { nv = v.slice(0, a - 1) + v.slice(a, z) + v.slice(z + 1); na = a - 1; nz = z - 1; }
+  else if (v[a] === '*' && v[z - 1] === '*' && z - a > 1) { nv = v.slice(0, a) + v.slice(a + 1, z - 1) + v.slice(z); na = a; nz = z - 2; }
+  else { nv = v.slice(0, a) + '*' + v.slice(a, z) + '*' + v.slice(z); na = a + 1; nz = z + 1; }
+  el.value = nv; el.setSelectionRange(na, nz); el.dispatchEvent(new Event('input', { bubbles:true }));
+});
 $('stLines').addEventListener('keydown', (e) => { if (e.key !== 'Enter' || !e.target.classList.contains('l-text')) return;   // Enter: altına yeni satır (sıradaki konuşmacıyla)
   const L = Studio.cur.lines, i = L.findIndex(x => x.id === e.target.closest('tr').dataset.id), sp = Studio.cur.speakers, k = sp.findIndex(s => s.id === L[i].spk);
   const n = { id:Studio.uid(), spk: sp[(k + 1) % sp.length].id, text:'', gap:0.3, rate:0 }; L.splice(i + 1, 0, n); stChanged(true);
@@ -2590,7 +2657,9 @@ $('stImportOk').onclick = () => {
   for (const raw of $('stImportText').value.split(/\r?\n/)) {
     const m = raw.match(/^\s*([^:]{1,30}):\s*(.+?)\s*(?:\[\s*(-?\d+(?:[.,]\d+)?)\s*\])?\s*$/); if (!m) continue;
     const name = m[1].trim(); let s = c.speakers.find(x => trLow(x.name) === trLow(name));
-    if (!s) { const n = c.speakers.length; s = { id:Studio.uid(), name, voice: stGuessVoice(name, n), rate:10, pitch:(n % 3) * 6 - 6, volume:0, color:ST_COLORS[n % ST_COLORS.length] }; c.speakers.push(s); }
+    if (!s) { const n = c.speakers.length, p = Presets.byName(name);
+      s = p ? { id:Studio.uid(), name, voice:p.voice, rate:p.rate, pitch:p.pitch, volume:p.volume, color:ST_COLORS[n % ST_COLORS.length] }
+            : { id:Studio.uid(), name, voice: stGuessVoice(name, n), rate:10, pitch:(n % 3) * 6 - 6, volume:0, color:ST_COLORS[n % ST_COLORS.length] }; c.speakers.push(s); }
     lines.push({ id:Studio.uid(), spk:s.id, text:m[2], gap: m[3] != null ? +m[3].replace(',', '.') : 0.3, rate:0 });
   }
   if (!lines.length) { toast('Aktarılacak satır bulunamadı. Her satır "Konuşmacı: cümle" şeklinde olmalı.'); return; }

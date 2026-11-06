@@ -157,7 +157,11 @@
   #stTL{width:100%;height:130px;background:var(--panel2);border-radius:8px;cursor:pointer}
   #stTL.grab{cursor:grabbing}
   .sndcell{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);padding:4px 2px}
-  .sndcell input{width:70px !important}
+  .sndcell{flex-wrap:wrap}
+  .sndcell input[type=number]{width:64px !important}
+  .sndcell input[type=checkbox]{width:auto !important}
+  .sndcell select{width:auto !important}
+  .sndcell > span,.sndcell > label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
   #stImportBox[hidden]{display:none}
   #stTeleSetup[hidden]{display:none}
   #stLib[hidden]{display:none}
@@ -385,8 +389,8 @@
         <label class="row note"><input type="checkbox" id="stPhone"> 📞 Telefon hattı sesi</label>
         <label class="row note"><input type="checkbox" id="stNoise"> Hat hışırtısı</label>
         <label class="row note"><input type="checkbox" id="stRing"> 📞 Başta çalma sesi ve bağlanma</label>
-        <label class="row note"><input type="checkbox" id="stHang"> 📵 Sonda kapanma sesi</label>
-        <div class="row note">Efekt ekle: <button class="fxadd" data-t="hold" title="Seçili satırın altına bekleme müziği">🎵 Bekleme</button><button class="fxadd" data-t="ring">📞</button><button class="fxadd" data-t="click">🔌</button><button class="fxadd" data-t="hangup">📵</button></div>
+        <label class="row note"><input type="checkbox" id="stHang"> 📵 Sonda kapanma: <select id="stHangType"><option value="">klik + kısa bipler</option><option value="click">sadece klik</option></select></label>
+        <div class="row note">Efekt ekle: <button class="fxadd" data-t="hold" title="Seçili satırın altına bekleme müziği">🎵 Bekleme</button><button class="fxadd" data-t="ring">📞</button><button class="fxadd" data-t="click">🔌</button><button class="fxadd" data-t="hangup">📵</button><button id="fxFile" title="Kendi efekt dosyanı ekle: korna, kapı zili, kalabalık, sokak sesi…">📁 Dosyadan efekt</button><input type="file" id="stFile" accept="audio/*" hidden></div>
         <label class="note" title="Aralara, hıza ve tona küçük rastgele farklar ekler; konuşma makine gibi düzenli duyulmaz">Doğallık <input type="range" id="stNat" min="0" max="100" step="10" style="width:120px;vertical-align:middle"> <span id="stNatV"></span>
           <button id="stReseed" title="Rastgele farkları yeniden dağıt">🎲</button></label>
         <label class="row note" title="İlk konuşmacı sol, diğerleri sağ kanalda — gerçek çağrı kayıtları gibi. Bu dosyayı ses → metin tarafına yükleyip deneyebilirsin."><input type="checkbox" id="stStereo"> Stereo (çağrı kaydı gibi)</label>
@@ -404,7 +408,7 @@
           <textarea id="stImportText" spellcheck="false" style="min-height:140px" placeholder="Personel: İletişim merkezine hoş geldiniz, size nasıl yardımcı olabilirim?&#10;Vatandaş: Merhaba, *yaşlılık maaşımı* ne zaman alabilirim?&#10;Personel: Hemen kontrol ediyorum. [0.5]&#10;Vatandaş: Geçen ay da… [-0.6]"></textarea>
           <div class="row"><label class="note"><input type="checkbox" id="stImportReplace" checked> Mevcut satırların yerine koy</label><span class="sp"></span><button id="stImportCancel">Vazgeç</button><button id="stImportOk" class="primary">Aktar</button></div>
         </div>
-        <div class="dtwrap stlines"><table class="dt"><thead><tr><th style="width:130px">Konuşan</th><th>Söylenen (vurgu: *kelime* · duraksama: (2))</th><th style="width:84px" title="Önceki konuşmadan sonra kaç sn; eksi = üst üste">Ara (sn)</th><th style="width:76px" title="Bu satıra özel hız farkı (%)">Hız ±%</th><th style="width:170px"></th></tr></thead><tbody id="stLines"></tbody></table></div>
+        <div class="dtwrap stlines"><table class="dt"><thead><tr><th style="width:130px">Konuşan</th><th>Söylenen (vurgu: *kelime* · duraksama: (2))</th><th style="width:84px" title="Önceki konuşmadan sonra kaç sn; eksi = üst üste">Ara (sn)</th><th style="width:76px" title="Bu satıra özel hız farkı (%)">Hız ±%</th><th style="width:200px"></th></tr></thead><tbody id="stLines"></tbody></table></div>
         <div class="row"><button id="stAddLine">＋ Satır</button><button id="stTeleBtn" title="Satırları sırayla kendi sesinle oku: okuma ekranında her satır gösterilir, Enter ile sonrakine geçersin">🎙 Sırayla kaydet</button><span class="sp"></span><span class="note" id="stStatus"></span></div>
         <div id="stTeleSetup" class="spk" hidden></div>
         <div id="stTele" class="tele" hidden></div>
@@ -2537,6 +2541,10 @@ const Studio = {
   async recBuf(id){ if (this.recBufs.has(id)) return this.recBufs.get(id); const blob = await RecDB.get(id); if (!blob) return null;
     const b = await this.ac().decodeAudioData(await blob.arrayBuffer()); this.recBufs.set(id, b); return b; },
   async line(line){
+    if (line.snd === 'file') { const b = line.rec && await this.recBuf(line.rec); if (!b) return null; const n = +line.sndN || 0;
+      if (!n || n <= b.duration) return b;   // döngü: dosya N saniye boyunca tekrar eder (sokak sesi, kalabalık…)
+      const o = this.ac().createBuffer(1, Math.round(n * ST_SR), ST_SR), d = o.getChannelData(0), src = b.getChannelData(0); for (let k = 0; k < d.length; k++) d[k] = src[k % src.length];
+      const fo = Math.round(0.5 * ST_SR); for (let k = 0; k < fo; k++) d[d.length - 1 - k] *= k / fo; return o; }
     if (line.snd) return this.snd(line.snd, +line.sndN || { ring:2, hold:8, hangup:1, click:1 }[line.snd]);
     if (line.clip) { const c = Lib.get(line.clip); const b = c && await this.recBuf(c.rec); if (b) return b; }   // kütüphaneden
     if (line.rec) { const b = await this.recBuf(line.rec); if (b) return b; }   // kendi kaydın varsa o
@@ -2560,7 +2568,9 @@ const Studio = {
   // Zaman çizelgesi: her satır önceki satırın bitişine göre (ara eksiyse üst üste) başlar
   layout(bufs, base){ const st = [], pe = []; let end = base;
     bufs.forEach((b, i) => { const L = this.cur.lines[i], g = (+L.gap || 0) + 0.15 * this.jit(L, 'g');
-      const s = i ? Math.max(0, end + g) : base + Math.max(base ? 0 : 0.2, g); pe.push(end); st.push(b ? s : null); if (b) end = s + b.duration; else end += Math.max(0, g); });
+      const s = i ? Math.max(0, end + g) : base + Math.max(base ? 0 : 0.2, g); pe.push(end); st.push(b ? s : null);
+      if (L.snd && L.bg) return;   // arka planda çalan efekt: konuşmalar onu beklemez
+      if (b) end = s + b.duration; else end += Math.max(0, g); });
     this.prevEnd = pe; return st; },
   // Efekt sesleri: çalma, klik, kapanma (meşgul), bekleme müziği — tamamen burada üretilir
   snd(type, n){
@@ -2572,7 +2582,8 @@ const Studio = {
     const click = () => { const a = new Float32Array(Math.round(0.06 * SR)); for (let i = 0; i < a.length; i++) { const e = Math.exp(-i / (0.006 * SR)); a[i] = e * ((Math.random() * 2 - 1) * 0.5 + 0.5 * Math.sin(2 * Math.PI * 120 * i / SR)); } return a; };
     if (type === 'ring') for (let i = 0; i < n; i++) { parts.push(tone(1.0, 450)); if (i < n - 1) parts.push(sil(3.0)); }
     if (type === 'click') parts.push(click());
-    if (type === 'hangup') { parts.push(click(), sil(0.35)); for (let i = 0; i < 4; i++) parts.push(tone(0.45, 450), sil(0.45)); }
+    if (type === 'hangup') { parts.push(click(), sil(0.4)); for (let i = 0; i < 3; i++) parts.push(tone(0.22, 425, 0.14), sil(0.28)); }   // hat kapandı: kısa, kısık bipler
+    if (type === 'hangclick') parts.push(sil(0.1), click(), sil(0.2));
     if (type === 'hold') {   // yumuşak, tekrarlayan bir arpej
       const notes = [261.63, 329.63, 392.0, 493.88, 440.0, 349.23, 392.0, 329.63], step = 0.36, total = Math.round(n * SR), a = new Float32Array(total);
       for (let k = 0; k * step * SR < total; k++) { const f = notes[k % notes.length] * (Math.floor(k / notes.length) % 2 ? 1 : 0.5) * 2, st0 = Math.round(k * step * SR), len = Math.round(0.9 * SR);
@@ -2590,7 +2601,7 @@ const Studio = {
     const base = intro ? intro.duration + 0.3 : 0;
     const st = this.layout(bufs, base);
     let last = Math.max(base, ...bufs.map((b, i) => b ? st[i] + b.duration : 0));
-    const outro = this.cur.hangEnd ? this.snd('hangup', 1) : null, outroAt = last + 0.6;
+    const outro = this.cur.hangEnd ? this.snd(this.cur.hangType === 'click' ? 'hangclick' : 'hangup', 1) : null, outroAt = last + 0.6;
     const dur = (outro ? outroAt + outro.duration : last) + 0.4;
     const stereo = this.cur.stereo, ch = stereo ? 2 : 1, oc = new OfflineAudioContext(ch, Math.ceil(dur * ST_SR), ST_SR);
     const firstSpk = this.cur.speakers[0] && this.cur.speakers[0].id;
@@ -2604,8 +2615,9 @@ const Studio = {
       }
       if (stereo) { const m = oc.createChannelMerger(2); if (chIdx < 0) { n.connect(m, 0, 0); n.connect(m, 0, 1); } else n.connect(m, 0, chIdx); m.connect(oc.destination); } else n.connect(oc.destination);
     };
-    const place = (b, at, chIdx) => { const s = oc.createBufferSource(); s.buffer = b; const g = oc.createGain(); g.gain.value = this.cur.phone ? 0.8 : 1; s.connect(g); chain(g, chIdx); s.start(at); };
-    bufs.forEach((b, i) => { if (b) place(b, st[i], L[i].snd ? -1 : L[i].spk === firstSpk ? 0 : 1); });
+    const place = (b, at, chIdx, vol = 0) => { const s = oc.createBufferSource(); s.buffer = b; const g = oc.createGain(); g.gain.value = (this.cur.phone ? 0.8 : 1) * Math.max(0, 1 + vol / 100); s.connect(g); chain(g, chIdx); s.start(at); };
+    const side = (l) => l.side === 'P' ? 0 : l.side === 'V' ? 1 : -1;   // efekt hangi tarafta duyulsun (stereo'da)
+    bufs.forEach((b, i) => { if (b) place(b, st[i], L[i].snd ? side(L[i]) : L[i].spk === firstSpk ? 0 : 1, L[i].snd ? (+L[i].vol || 0) : 0); });
     if (intro) place(intro, 0, -1); if (outro) place(outro, outroAt, -1);
     if (this.cur.noise) {   // hat hışırtısı: çok düşük seviyeli filtrelenmiş gürültü
       const nb = oc.createBuffer(1, Math.ceil(dur * ST_SR), ST_SR), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * 0.012;
@@ -2613,7 +2625,7 @@ const Studio = {
       if (stereo) { const m = oc.createChannelMerger(2); lp.connect(m, 0, 0); lp.connect(m, 0, 1); m.connect(oc.destination); } else lp.connect(oc.destination); s.start(0);
     }
     stStatus('Birleştiriliyor…');
-    this.mix = await oc.startRendering(); this.starts = st.map((s, i) => s == null ? null : { s, e: s + bufs[i].duration, spk:L[i].spk, snd:!!L[i].snd });
+    this.mix = await oc.startRendering(); this.starts = st.map((s, i) => s == null ? null : { s, e: s + bufs[i].duration, spk:L[i].spk, snd:!!L[i].snd, bg:!!(L[i].snd && L[i].bg) });
     this.extras = [intro && { s:0, e:intro.duration, label:'📞' }, outro && { s:outroAt, e:outroAt + outro.duration, label:'📵' }].filter(Boolean);
     return this.mix;
   },
@@ -2655,7 +2667,8 @@ function stDraw(pos){
   const box = (s, e, k, color, label, alpha = 0.85) => { g.fillStyle = color; g.globalAlpha = alpha; g.fillRect(x(s), 4 * dpr + k * lane, Math.max(2, x(e) - x(s)), lane - 6 * dpr); g.globalAlpha = 1;
     g.fillStyle = '#0b1220'; g.fillText(label, x(s) + 4, 4 * dpr + k * lane + 13 * dpr); };
   (S.extras || []).forEach(b => box(b.s, b.e, spk.length, '#64748b', b.label));
-  S.starts.forEach((b, i) => { if (!b) return; const sh = D && D.moved && i >= D.i ? D.d : 0;   // sürüklenen satır ve sonrakiler birlikte kayar
+  S.starts.forEach((b, i) => { if (!b) return; const dragBg = D && S.starts[D.i] && S.starts[D.i].bg;
+    const sh = D && D.moved && (i === D.i || (!dragBg && i > D.i && !b.bg)) ? D.d : 0;   // sürüklenen satır ve (arka plan değilse) sonrakiler birlikte kayar
     const k = b.snd ? spk.length : Math.max(0, spk.findIndex(s => s.id === b.spk)), color = b.snd ? '#94a3b8' : (spk[k] || spk[0]).color;
     box(b.s + sh, b.e + sh, k, color, String(i + 1), D && D.moved && i === D.i ? 1 : 0.85);
     if (D && D.moved && i === D.i) { g.strokeStyle = '#facc15'; g.lineWidth = 2 * dpr; g.strokeRect(x(b.s + sh), 4 * dpr + k * lane, Math.max(2, x(b.e) - x(b.s)), lane - 6 * dpr); } });
@@ -2670,7 +2683,7 @@ function stRender(){
   const S = Studio, c = S.cur;
   $('stScen').innerHTML = S.list.map(x => `<option value="${x.id}" ${x.id === c.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
   $('stName').value = c.name; $('stPhone').checked = !!c.phone; $('stNoise').checked = !!c.noise; $('stStereo').checked = !!c.stereo;
-  $('stRing').checked = !!c.ringStart; $('stHang').checked = !!c.hangEnd; $('stNat').value = c.natural || 0; $('stNatV').textContent = c.natural ? '%' + c.natural : 'kapalı';
+  $('stRing').checked = !!c.ringStart; $('stHang').checked = !!c.hangEnd; $('stHangType').value = c.hangType || ''; $('stNat').value = c.natural || 0; $('stNatV').textContent = c.natural ? '%' + c.natural : 'kapalı';
   $('stSpk').innerHTML = c.speakers.map(s => `<div class="stspk" data-id="${s.id}" style="--c:${s.color}">
       <div class="row"><input type="text" class="s-name" value="${esc(s.name)}"><button class="s-try" title="Bu sesi dene">🔊</button>${c.speakers.length > 1 ? '<button class="s-del" title="Konuşmacıyı sil">✕</button>' : ''}</div>
       <div class="row"><select class="s-preset" title="Hazır seslerden birini uygula"><option value="">${Presets.match(s) ? '' : '— özel ayar —'}</option>${[...new Set(Presets.list.map(p => p.cat))].sort((a, b) => Presets.rank(a) - Presets.rank(b)).map(cat => `<optgroup label="${esc(cat)}">${Presets.list.filter(p => p.cat === cat).map(p => `<option value="${p.id}" ${Presets.match(s) === p ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('')}</select>
@@ -2680,18 +2693,22 @@ function stRender(){
       <label>Ton <input type="range" class="s-pitch" min="-30" max="30" step="2" value="${s.pitch || 0}"><span class="v">${Studio.hz(s.pitch || 0)}</span></label>
       <label>Ses <input type="range" class="s-vol" min="-40" max="40" step="5" value="${s.volume || 0}"><span class="v">${Studio.pct(s.volume || 0)}</span></label></div>`).join('');
   const opts = (v) => c.speakers.map(s => `<option value="${s.id}" ${s.id === v ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-  const SND = { ring:['📞 Çalma sesi', 'kez'], hold:['🎵 Bekleme müziği', 'sn'], hangup:['📵 Kapanma sesi', ''], click:['🔌 Bağlanma (klik)', ''] };
+  const SND = { ring:['📞 Çalma sesi', 'kez'], hold:['🎵 Bekleme müziği', 'sn'], hangup:['📵 Kapanma sesi', ''], click:['🔌 Bağlanma (klik)', ''], file:['📁', 'sn tekrarla (0 = bir kez)'] };
+  const fxOpts = (l) => `<span title="Efektin ses yüksekliği">Ses <input type="number" class="l-vol" step="10" min="-90" max="200" value="${l.vol || 0}">%</span>
+      <label title="İşaretlersen konuşmalar bu sesi beklemez, üstüne devam eder (korna, kalabalık, sokak sesi…)"><input type="checkbox" class="l-bg" ${l.bg ? 'checked' : ''}> arka planda</label>
+      <select class="l-side" title="Stereo dosyada hangi tarafta duyulsun"><option value="">her iki taraf</option><option value="V" ${l.side === 'V' ? 'selected' : ''}>vatandaş tarafı</option><option value="P" ${l.side === 'P' ? 'selected' : ''}>personel tarafı</option></select>`;
   $('stLines').innerHTML = c.lines.map((l, i) => l.snd ? `<tr data-id="${l.id}" style="--c:#94a3b8">
       <td class="note" style="padding-top:8px">efekt</td>
-      <td><div class="sndcell">${SND[l.snd][0]}${SND[l.snd][1] ? ` · <input type="number" class="l-sndn" min="1" max="120" value="${l.sndN || { ring:2, hold:8 }[l.snd]}"> ${SND[l.snd][1]}` : ''}</div></td>
+      <td><div class="sndcell">${l.snd === 'file' ? `📁 ${esc(l.fname || 'ses dosyası')} (${String(l.recDur || '').replace('.', ',')} sn)` : SND[l.snd][0]}${SND[l.snd][1] ? ` · <input type="number" class="l-sndn" min="${l.snd === 'file' ? 0 : 1}" max="300" value="${l.sndN ?? { ring:2, hold:8, file:0 }[l.snd]}"> ${SND[l.snd][1]}` : ''}</div>
+        <div class="sndcell">${fxOpts(l)}</div></td>
       <td><input type="number" class="l-gap" step="0.1" value="${l.gap ?? 0.3}"></td><td></td>
       <td class="acts"><button class="l-play" title="Dinle">▶</button><button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Sil">✕</button></td></tr>`
     : `<tr data-id="${l.id}" style="--c:${S.spk(l.spk).color}">
       <td><select class="l-spk">${opts(l.spk)}</select></td>
-      <td><input type="text" class="l-text" value="${esc(l.text)}" placeholder="Söylenecek cümle" title="Vurgu: kelimeyi seç + Ctrl+B · Duraksama: (2) · Enter: yeni satır">${REC.line === l ? '<div class="recinfo">🎙 Kaydediliyor… <span class="micbar"><i></i></span></div>' : l.clip && Lib.get(l.clip) ? `<div class="recinfo">📚 Kütüphaneden: ${esc(Lib.get(l.clip).name)} (${String(Lib.get(l.clip).dur).replace('.', ',')} sn)</div>` : l.rec ? `<div class="recinfo ${l.recText !== l.text ? 'warn' : ''}">🎙 Kendi sesin (${String(l.recDur || '').replace('.', ',')} sn)${l.recText !== l.text ? ' · ⚠ metin kayıttan sonra değişti, yeniden okuman gerekebilir' : ''}</div>` : ''}</td>
+      <td><input type="text" class="l-text" value="${esc(l.text)}" placeholder="Söylenecek cümle" title="Vurgu: kelimeyi seç + Ctrl+B · Duraksama: (2) · Enter: yeni satır">${REC.line === l ? '<div class="recinfo">🎙 Kaydediliyor… <span class="micbar"><i></i></span></div>' : l.clip && Lib.get(l.clip) ? `<div class="recinfo">📚 Kütüphaneden: ${esc(Lib.get(l.clip).name)} (${String(Lib.get(l.clip).dur).replace('.', ',')} sn)</div>` : l.rec ? `<div class="recinfo ${l.recText !== l.text ? 'warn' : ''}">${l.recFile ? '📁 ' + esc(l.recFile) : '🎙 Kendi sesin'} (${String(l.recDur || '').replace('.', ',')} sn)${l.recText !== l.text ? ' · ⚠ metin kayıttan sonra değişti, yeniden okuman gerekebilir' : ''}</div>` : ''}</td>
       <td><input type="number" class="l-gap" step="0.1" value="${l.gap ?? 0.3}"></td>
       <td><input type="number" class="l-rate" step="5" value="${l.rate || 0}"></td>
-      <td class="acts"><button class="l-play" title="Sadece bu satırı dinle">▶</button><button class="l-rec ${REC.line === l ? 'on' : (l.rec || l.clip) ? 'has' : ''}" title="${REC.line === l ? 'Kaydı bitir' : l.rec ? 'Kendi sesin kayıtlı — yeniden kaydetmek için bas' : 'Bu satırı kendi sesinle kaydet'}">${REC.line === l ? '⏹' : '🎙'}</button>${(l.rec || l.clip) ? '<button class="l-recdel" title="Kaydı kaldır, yapay sese dön">🤖</button>' : ''}<button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Satırı sil">✕</button></td></tr>`).join('');
+      <td class="acts"><button class="l-play" title="Sadece bu satırı dinle">▶</button><button class="l-rec ${REC.line === l ? 'on' : (l.rec || l.clip) ? 'has' : ''}" title="${REC.line === l ? 'Kaydı bitir' : l.rec ? 'Kendi sesin kayıtlı — yeniden kaydetmek için bas' : 'Bu satırı kendi sesinle kaydet'}">${REC.line === l ? '⏹' : '🎙'}</button><button class="l-file" title="Bu satır için hazır bir ses dosyası yükle (telefonla kaydettiğin ses vb.)">📁</button>${(l.rec || l.clip) ? '<button class="l-recdel" title="Kaydı kaldır, yapay sese dön">🤖</button>' : ''}<button class="l-up" title="Yukarı" ${i ? '' : 'disabled'}>↑</button><button class="l-down" title="Aşağı" ${i < c.lines.length - 1 ? '' : 'disabled'}>↓</button><button class="l-del" title="Satırı sil">✕</button></td></tr>`).join('');
   stDraw(0); if (!$('stLib').hidden) libRender();
 }
 function stChanged(redraw){ Studio.mix = null; $('stWav').disabled = true; $('stMp3').disabled = true; Studio.save(); if (redraw) stRender(); else stDraw(0); }
@@ -2705,8 +2722,21 @@ $('stNew').onclick = () => { const s = Studio.blank(); s.lines = [{ id:Studio.ui
 $('stCopy').onclick = () => { const s = JSON.parse(JSON.stringify(Studio.cur)); s.id = Studio.uid(); s.name += ' (kopya)'; Studio.list.push(s); Studio.cur = s; stChanged(true); };
 $('stDel').onclick = () => { if (!confirm(`"${Studio.cur.name}" senaryosu silinsin mi?`)) return; Studio.list = Studio.list.filter(x => x !== Studio.cur); if (!Studio.list.length) Studio.list.push(Studio.blank()); Studio.cur = Studio.list[0]; stChanged(true); RecDB.gc(); };
 ['stPhone', 'stNoise', 'stStereo', 'stRing', 'stHang'].forEach((id, k) => $(id).onchange = () => { Studio.cur[['phone', 'noise', 'stereo', 'ringStart', 'hangEnd'][k]] = $(id).checked; stChanged(); });
+$('stHangType').onchange = () => { Studio.cur.hangType = $('stHangType').value; Studio.cur.hangEnd = true; $('stHang').checked = true; stChanged(); };
 $('stNat').oninput = () => { Studio.cur.natural = +$('stNat').value; $('stNatV').textContent = Studio.cur.natural ? '%' + Studio.cur.natural : 'kapalı'; stChanged(); };
 $('stReseed').onclick = () => { Studio.cur.seed = Math.floor(Math.random() * 1e9); stChanged(); toast('Rastgele farklar yeniden dağıtıldı; Oluştur ile dinle'); };
+// Dosyadan ses: konuşma satırına (kırp + seviye eşitle) ya da efekt satırı olarak (olduğu gibi)
+const STF = { target:null, mode:null };
+$('fxFile').onclick = () => { STF.mode = 'fx'; STF.target = null; $('stFile').value = ''; $('stFile').click(); };
+$('stFile').onchange = async () => { const f = $('stFile').files[0]; if (!f) return; const L = Studio.cur.lines;
+  try { stStatus('Ses dosyası okunuyor…'); const buf = await Studio.ac().decodeAudioData(await f.arrayBuffer());
+    if (STF.mode === 'line') { const l = L.find(x => x.id === STF.target); if (!l) return; const r = await stStoreAudio(buf);
+      delete l.clip; l.rec = r.id; l.recText = l.text; l.recDur = r.dur; l.recFile = f.name; stChanged(true); RecDB.gc(); stStatus(`✔ "${f.name}" bu satıra eklendi (${String(r.dur).replace('.', ',')} sn).`); }
+    else { const r = await stStoreAudio(buf, { trim:false, norm:false }); const at = STL.focus ? L.findIndex(l => l.id === STL.focus) + 1 : L.length;
+      const n = { id:Studio.uid(), spk:Studio.cur.speakers[0].id, text:'', gap:0, rate:0, snd:'file', rec:r.id, recDur:r.dur, fname:f.name.replace(/\.[^.]+$/, ''), sndN:0, vol:0, bg:true, side:'V' };
+      L.splice(at > 0 ? at : L.length, 0, n); STL.focus = n.id; stChanged(true);
+      stStatus(`✔ "${f.name}" efekt olarak eklendi. Arka planda çalar (konuşmalar beklemez); zaman çizelgesinde sürükleyerek yerini ayarlayabilirsin.`); } }
+  catch (e) { stStatus('⚠ Ses dosyası açılamadı: ' + (e.message || e)); } };
 document.querySelectorAll('.fxadd').forEach(b => b.onclick = () => { const L = Studio.cur.lines, at = STL.focus ? L.findIndex(l => l.id === STL.focus) + 1 : L.length, t = b.dataset.t;
   const n = { id:Studio.uid(), spk:Studio.cur.speakers[0].id, text:'', gap:0.3, rate:0, snd:t, sndN:{ ring:2, hold:8 }[t] }; L.splice(at > 0 ? at : L.length, 0, n); STL.focus = n.id; stChanged(true); });
 $('stAddSpk').onclick = () => { const c = Studio.cur, n = c.speakers.length;
@@ -2740,12 +2770,18 @@ const STL = { focus:null };
 $('stLines').addEventListener('focusin', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) STL.focus = tr.dataset.id; });
 $('stLines').addEventListener('input', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr) return; const l = Studio.cur.lines.find(x => x.id === tr.dataset.id), c = e.target.classList;
   if (c.contains('l-text')) l.text = e.target.value; if (c.contains('l-gap')) l.gap = +e.target.value || 0; if (c.contains('l-rate')) l.rate = +e.target.value || 0;
-  if (c.contains('l-sndn')) l.sndN = Math.max(1, Math.min(120, +e.target.value || 1)); stChanged(); });
-$('stLines').addEventListener('change', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr || !e.target.classList.contains('l-spk')) return;
+  if (c.contains('l-sndn')) l.sndN = Math.max(l.snd === 'file' ? 0 : 1, Math.min(300, +e.target.value || 0));
+  if (c.contains('l-vol')) l.vol = Math.max(-90, Math.min(200, +e.target.value || 0));
+  if (c.contains('l-bg')) l.bg = e.target.checked;
+  if (c.contains('l-side')) l.side = e.target.value; stChanged(); });
+$('stLines').addEventListener('change', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+  if (e.target.matches('.l-bg,.l-side')) { const l = Studio.cur.lines.find(x => x.id === tr.dataset.id); if (e.target.matches('.l-bg')) l.bg = e.target.checked; else l.side = e.target.value; stChanged(); return; }
+  if (!e.target.classList.contains('l-spk')) return;
   Studio.cur.lines.find(x => x.id === tr.dataset.id).spk = e.target.value; stChanged(true); });
 $('stLines').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (!tr) return; const L = Studio.cur.lines, i = L.findIndex(x => x.id === tr.dataset.id);
   if (e.target.closest('.l-play')) { stTry(L[i]); return; }
   if (e.target.closest('.l-rec')) { if (Mic.active() && REC.line !== L[i]) { toast('Önce süren kaydı bitir'); return; } stRecOne(L[i]); return; }
+  if (e.target.closest('.l-file')) { STF.target = L[i].id; STF.mode = 'line'; $('stFile').value = ''; $('stFile').click(); return; }
   if (e.target.closest('.l-recdel')) { if (!confirm(L[i].clip ? 'Bu satırın kütüphane bağlantısı kaldırılsın mı? (Kütüphanedeki kayıt silinmez)' : 'Bu satırdaki kendi kaydın silinsin mi? Satır yapay sesle okunacak.')) return;
     delete L[i].clip; delete L[i].rec; delete L[i].recText; delete L[i].recDur; stChanged(true); RecDB.gc(); return; }
   if (e.target.closest('.l-up') && i > 0) [L[i - 1], L[i]] = [L[i], L[i - 1]];
@@ -2873,7 +2909,7 @@ async function stSaveRec(line, buf){
   if (out.duration < 0.25) throw new Error('Kayıtta ses bulunamadı (mikrofon sessiz mi?)');
   const old = line.rec, id = 'r' + Studio.uid() + Date.now().toString(36);
   const prevMix = Studio.mix; Studio.mix = out; const wav = Studio.wav(); Studio.mix = prevMix;
-  await RecDB.put(id, wav); Studio.recBufs.set(id, out); line.rec = id; line.recText = line.text; line.recDur = +out.duration.toFixed(1); delete line.clip;
+  await RecDB.put(id, wav); Studio.recBufs.set(id, out); line.rec = id; line.recText = line.text; line.recDur = +out.duration.toFixed(1); delete line.clip; delete line.recFile;
   if (old) RecDB.gc();
 }
 const REC = { line:null, queue:null, i:0, mark:0, marks:[] };
